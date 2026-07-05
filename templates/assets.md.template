@@ -1,0 +1,13 @@
+# assets 资产
+
+## characters 角色
+必须包含 character_id 角色编号、face_shape 脸型、hair_style 发型、clothing_lock 服装锁定、prop_lock 道具锁定、forbidden_changes 禁止变化。
+
+## scenes 场景
+必须包含 scene_id 场景编号、lighting_direction 光线方向、layout_map 空间布局、fixed_props 固定物件、forbidden_elements 禁止元素。
+
+## props 道具
+必须包含 prop_id 道具编号、prop_lock 道具锁定。
+
+## asset_reuse_plan 资产复用计划
+资产完成后必须给 recommended_episode_count 建议制作集数。

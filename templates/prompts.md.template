@@ -1,0 +1,10 @@
+# prompts 提示词
+
+## character_asset_prompt 人物资产提示词
+
+## scene_asset_prompt 场景资产提示词
+
+## storyboard_image_prompt 分镜图提示词
+
+## video_prompt 视频提示词
+每条视频 Prompt 必须包含角色参考、场景参考、动作、运动轨迹、机位、连续性锁定、负面词、备用提示词。

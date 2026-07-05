@@ -1,0 +1,12 @@
+# storyboard 分镜
+
+## blocking_plan 人物调度计划
+
+## motion_plan 运动轨迹计划
+
+## camera_plan 机位计划
+
+## storyboard_sketch 草图分镜
+
+## shot_plan 分镜计划
+每个镜头必须包含运动轨迹、机位运动、连续性锁定、备用镜头。

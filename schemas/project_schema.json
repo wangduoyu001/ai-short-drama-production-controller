@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Short Drama Production Controller Project",
+  "type": "object",
+  "required": [
+    "project_name 项目名",
+    "input_type 输入类型",
+    "production_mode 制作模式",
+    "characters 角色列表",
+    "scenes 场景列表",
+    "shots 分镜列表"
+  ],
+  "properties": {
+    "project_name 项目名": {"type": "string"},
+    "input_type 输入类型": {"type": "string"},
+    "production_mode 制作模式": {"type": "string"},
+    "characters 角色列表": {"type": "array"},
+    "scenes 场景列表": {"type": "array"},
+    "shots 分镜列表": {"type": "array"}
+  }
+}

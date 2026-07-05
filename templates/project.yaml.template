@@ -1,0 +1,16 @@
+project_name 项目名:
+skill_version 技能版本: 0.1.0
+input_type 输入类型:
+genre 类型:
+production_mode 制作模式: fast_demo 快速样片模式
+target_platform 目标平台: LibTV / Lovart
+scope_gate 范围闸门:
+  scope_status 范围状态:
+  reduced_scope 压缩后范围:
+difficulty_budget 难度预算:
+  difficulty_score 难度分:
+  difficulty_status 难度状态:
+characters 角色列表: []
+scenes 场景列表: []
+shots 分镜列表: []
+continuity_map 连续性地图: {}

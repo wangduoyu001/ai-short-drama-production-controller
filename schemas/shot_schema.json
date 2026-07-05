@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shot Plan / 分镜计划",
+  "type": "object",
+  "required": [
+    "shot_id 镜头编号",
+    "shot_purpose 镜头目的",
+    "duration_seconds 时长秒数",
+    "scene_id 场景编号",
+    "character_ids 角色编号",
+    "motion_path 运动轨迹",
+    "camera_movement 机位运动",
+    "continuity_locks 连续性锁定",
+    "fallback_shot 备用镜头"
+  ]
+}

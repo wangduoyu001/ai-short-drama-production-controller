@@ -1,0 +1,7 @@
+# qa_report 质检报告
+
+qa_status 质检状态：
+blocker_count 阻塞问题数：
+warning_count 警告问题数：
+
+## issues 问题列表
