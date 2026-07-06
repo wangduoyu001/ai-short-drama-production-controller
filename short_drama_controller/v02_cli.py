@@ -5,10 +5,12 @@ from pathlib import Path
 
 from .v02_assets import extract_assets
 from .v02_dialogue import extract_dialogue
+from .v02_exporters import export_project
 from .v02_io import read_project, write_project, write_text
 from .v02_models import Project
 from .v02_prompts import attach_sound_and_prompts
 from .v02_qa import summary, validate
+from .v02_repair import repair_project
 from .v02_storyboard import build_shots
 
 
@@ -32,6 +34,10 @@ def init_project(input_path: Path, out_dir: Path, title: str | None) -> None:
 
 def load(out_dir: Path) -> Project:
     return Project(read_project(out_dir / "project.yaml"))
+
+
+def save(project: Project, out_dir: Path) -> None:
+    write_outputs(project, out_dir)
 
 
 def write_outputs(project: Project, out_dir: Path) -> None:
@@ -67,7 +73,12 @@ def render_prompts(project: Project) -> str:
 
 
 def render_qa(qa: dict) -> str:
-    lines = ["# qa_report 质检报告", f"qa_status 质检状态：{qa['qa_status 质检状态']}", f"blocker_count 阻塞问题数：{qa['blocker_count 阻塞问题数']}", f"warning_count 警告问题数：{qa['warning_count 警告问题数']}"]
+    lines = [
+        "# qa_report 质检报告",
+        f"qa_status 质检状态：{qa['qa_status 质检状态']}",
+        f"blocker_count 阻塞问题数：{qa['blocker_count 阻塞问题数']}",
+        f"warning_count 警告问题数：{qa['warning_count 警告问题数']}",
+    ]
     for issue in qa["issues 问题列表"]:
         lines.append(f"- {issue}")
     return "\n".join(lines)
@@ -79,10 +90,25 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 
 def cmd_qa(args: argparse.Namespace) -> None:
-    project = load(Path(args.project))
+    project_dir = Path(args.project)
+    project = load(project_dir)
     qa = summary(validate(project))
-    write_text(Path(args.project) / "qa.md", render_qa(qa))
+    write_text(project_dir / "qa.md", render_qa(qa))
     print(qa)
+
+
+def cmd_repair(args: argparse.Namespace) -> None:
+    project_dir = Path(args.project)
+    project = repair_project(load(project_dir))
+    save(project, project_dir)
+    print(f"v02_repair 返修替换完成: {project_dir}")
+
+
+def cmd_export(args: argparse.Namespace) -> None:
+    project_dir = Path(args.project)
+    project = load(project_dir)
+    export_project(project, project_dir)
+    print(f"v02_export 导出完成: {project_dir / 'exports'}")
 
 
 def cmd_grid(args: argparse.Namespace) -> None:
@@ -96,14 +122,25 @@ def cmd_grid(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m short_drama_controller.v02_cli")
     sub = parser.add_subparsers(required=True)
+
     p = sub.add_parser("init")
     p.add_argument("--input", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--title")
     p.set_defaults(func=cmd_init)
+
     p = sub.add_parser("qa")
     p.add_argument("--project", required=True)
     p.set_defaults(func=cmd_qa)
+
+    p = sub.add_parser("repair")
+    p.add_argument("--project", required=True)
+    p.set_defaults(func=cmd_repair)
+
+    p = sub.add_parser("export")
+    p.add_argument("--project", required=True)
+    p.set_defaults(func=cmd_export)
+
     p = sub.add_parser("grid")
     p.add_argument("--project", required=True)
     p.add_argument("--shot", required=True)
