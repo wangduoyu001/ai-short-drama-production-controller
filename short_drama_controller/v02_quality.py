@@ -66,6 +66,7 @@ def validate_shots(project: Project) -> list[Issue]:
         for field in [
             "director_intent 导演意图", "this_clip_only 本段只拍", "reserved_for_later 后续保留",
             "planned_end_state 计划结束状态", "observed_end_state 实际生成结尾状态", "retake_variable 本次返修变量",
+            "sketch_ascii 简笔手绘图", "movement_arrow 运动箭头", "camera_arrow 镜头箭头", "screen_direction 画面方向",
         ]:
             if not shot.get(field):
                 items.append(Issue("WARN", "director_pack.missing", f"{sid} 缺 {field}", "ADD 补充"))
