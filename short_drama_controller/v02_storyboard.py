@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .v02_dialogue import force_reverse_shot_units
@@ -11,6 +12,14 @@ ALLOWED_CAMERA = {
     "slight_lateral_move 轻微横移",
     "subtle_handheld 轻微手持",
 }
+
+CONFLICT_WORDS = [
+    "杀", "死", "逃", "追", "逼", "威胁", "怒", "喝", "跪", "押", "围", "断", "血", "伤",
+    "不许", "不能", "偏要", "拒绝", "护送", "灭世", "仇", "恨", "夺", "抢", "欺",
+]
+TURN_WORDS = ["突然", "却", "但", "然而", "终于", "转身", "没有回头", "停下", "抬头", "拔", "握", "沉默", "冷笑"]
+POWER_WORDS = ["大人", "将军", "镖头", "掌门", "师父", "官", "王", "帝女", "少年", "少女", "众人", "跪", "押", "围"]
+SUBTEXT_WORDS = ["沉默", "低声", "冷笑", "没有回头", "看着", "盯着", "握", "停顿", "颤", "咬牙"]
 
 
 def build_shots(project: Project) -> None:
@@ -63,15 +72,132 @@ def build_shots(project: Project) -> None:
 
 
 def build_director_read(text: str, scene: dict[str, Any], char_a: dict[str, Any], char_b: dict[str, Any]) -> dict[str, str]:
+    units = split_source_units(text)
+    conflict_hits = find_terms(text, CONFLICT_WORDS)
+    turn_hits = find_terms(text, TURN_WORDS)
+    power_hits = find_terms(text, POWER_WORDS)
+    subtext_hits = find_terms(text, SUBTEXT_WORDS)
+    dialogue_samples = extract_dialogue_samples(text)
+    char_a_name = char_a.get("character_name 角色名", "A")
+    char_b_name = char_b.get("character_name 角色名", "B")
+    conflict_sentence = find_best_sentence(units, conflict_hits or CONFLICT_WORDS)
+    turn_sentence = find_best_sentence(units, turn_hits or TURN_WORDS)
+    power_sentence = find_best_sentence(units, power_hits or POWER_WORDS)
+    subtext_sentence = find_best_sentence(units, subtext_hits or SUBTEXT_WORDS)
+
+    scene_function = infer_scene_function(conflict_hits, dialogue_samples, units)
+    scene_turn = infer_scene_turn(turn_hits, conflict_hits, char_a_name)
+    power_shift = infer_power_shift(power_hits, conflict_hits, char_a_name, char_b_name)
+    subtext = infer_subtext(subtext_hits, dialogue_samples, char_a_name)
+    director_intent = infer_director_intent(scene_function, scene_turn, subtext)
+
     return {
-        "scene_function 场景功能": "建立人物关系并推动一次明确转折",
-        "scene_turn 场景转折": "从试探或压迫，转为角色立场被看见",
-        "pov_empathy 观众视角与共情位置": f"观众站在{char_a['character_name 角色名']}附近，感受其压力和选择",
-        "power_shift 权力变化": f"{char_b['character_name 角色名']}起初占据压迫位，随后{char_a['character_name 角色名']}用行动或台词夺回主动",
-        "subtext 潜台词": "人物表面说话，真实冲突在沉默、停顿、手部动作和视线里发生",
-        "director_intent 导演意图": "让观众感觉主角不是在解释自己，而是在用可见动作证明自己还有退路或底牌",
-        "directorial_voice 导演声音": "克制写实、少运镜、重表演动作、重环境声，不堆空泛电影感",
+        "source_basis 原文依据": join_evidence(units[:3]),
+        "conflict_terms 冲突词": "、".join(conflict_hits) if conflict_hits else "未发现强冲突词，按低强度关系压力处理",
+        "dialogue_basis 对白依据": " / ".join(dialogue_samples[:3]) if dialogue_samples else "原文未发现明确引号对白，按动作与叙述推断",
+        "relationship_basis 角色关系依据": "、".join(power_hits) if power_hits else f"根据{char_a_name}与{char_b_name}的对位关系推断",
+        "scene_function 场景功能": scene_function,
+        "scene_function_evidence 场景功能证据": conflict_sentence,
+        "scene_turn 场景转折": scene_turn,
+        "scene_turn_evidence 场景转折证据": turn_sentence,
+        "pov_empathy 观众视角与共情位置": f"观众优先贴近{char_a_name}，通过其停顿、动作和反应理解压力来源",
+        "power_shift 权力变化": power_shift,
+        "power_shift_evidence 权力变化证据": power_sentence,
+        "subtext 潜台词": subtext,
+        "subtext_evidence 潜台词证据": subtext_sentence,
+        "director_intent 导演意图": director_intent,
+        "directorial_voice 导演声音": "克制写实、少运镜、重表演动作、重环境声；所有镜头必须服务原文证据链",
+        "director_read_confidence 导演读本置信度": infer_director_confidence(conflict_hits, turn_hits, dialogue_samples),
     }
+
+
+def split_source_units(text: str) -> list[str]:
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[。！？!?；;])", cleaned)
+    units = [p.strip() for p in parts if p.strip()]
+    return units or [cleaned[:160]]
+
+
+def extract_dialogue_samples(text: str) -> list[str]:
+    samples = re.findall(r"[“\"]([^”\"]{1,80})[”\"]", text)
+    if samples:
+        return samples[:5]
+    colon_samples = re.findall(r"[:：]\s*([^。！？!?\n]{1,80})", text)
+    return [s.strip() for s in colon_samples if s.strip()][:5]
+
+
+def find_terms(text: str, terms: list[str]) -> list[str]:
+    hits: list[str] = []
+    for term in terms:
+        if term in text and term not in hits:
+            hits.append(term)
+    return hits[:8]
+
+
+def find_best_sentence(units: list[str], terms: list[str]) -> str:
+    if not units:
+        return "无原文证据，必须人工确认"
+    for unit in units:
+        if any(term in unit for term in terms):
+            return unit[:140]
+    return units[0][:140]
+
+
+def join_evidence(units: list[str]) -> str:
+    if not units:
+        return "无原文段落依据，必须人工确认"
+    return " / ".join(unit[:90] for unit in units)
+
+
+def infer_scene_function(conflicts: list[str], dialogues: list[str], units: list[str]) -> str:
+    if conflicts and dialogues:
+        return "通过对白交锋和冲突词建立人物压力，并把原文推进为可拍的对峙场面"
+    if conflicts:
+        return "通过动作或叙述中的冲突词建立危险处境，推动角色做出选择"
+    if dialogues:
+        return "通过对白暴露人物关系和信息差，建立下一步行动理由"
+    if len(units) <= 2:
+        return "用短场景建立人物、地点和一个可继续生成的悬念"
+    return "把原文段落压缩为一个明确的场景任务，服务后续镜头连续性"
+
+
+def infer_scene_turn(turns: list[str], conflicts: list[str], char_a_name: str) -> str:
+    if turns:
+        return f"转折来自“{'、'.join(turns[:3])}”：场面从静态信息进入可见动作或态度变化"
+    if conflicts:
+        return f"转折来自冲突压力升级：{char_a_name}必须从被动承受转为做出反应"
+    return f"转折来自{char_a_name}的状态变化：从观察进入表达或行动"
+
+
+def infer_power_shift(power_terms: list[str], conflicts: list[str], char_a_name: str, char_b_name: str) -> str:
+    if any(term in power_terms for term in ["大人", "将军", "镖头", "掌门", "师父", "官", "王", "帝女"]):
+        return f"权力起初由身份或地位更高的一方掌握，随后通过{char_a_name}的动作、沉默或对白出现反向牵制"
+    if conflicts:
+        return f"权力起初由施压者掌握，随后{char_a_name}用可见反应打断压迫节奏"
+    return f"{char_a_name}与{char_b_name}的权力关系尚不明确，按试探关系处理，需用户确认"
+
+
+def infer_subtext(subtext_terms: list[str], dialogues: list[str], char_a_name: str) -> str:
+    if subtext_terms:
+        return f"潜台词来自“{'、'.join(subtext_terms[:3])}”：人物真正的态度藏在停顿、眼神、手部动作和沉默里"
+    if dialogues:
+        return "对白表面传递信息，真实重点是说话人的底气、迟疑或试探"
+    return f"{char_a_name}表面行动简单，潜台词应由身体姿态、视线和环境声承担"
+
+
+def infer_director_intent(scene_function: str, scene_turn: str, subtext: str) -> str:
+    return f"让观众先看懂压力来源，再看见转折发生；镜头、声音和动作都服务于：{scene_turn}。潜台词处理：{subtext}"
+
+
+def infer_director_confidence(conflicts: list[str], turns: list[str], dialogues: list[str]) -> str:
+    score = len(conflicts) + len(turns) + len(dialogues)
+    if score >= 5:
+        return "high 高：原文冲突、转折和对白证据较充分"
+    if score >= 2:
+        return "medium 中：有部分原文证据，导演补足需人工确认"
+    return "low 低：原文证据不足，必须人工确认导演读本"
 
 
 def build_state_capsule(project: Project, director_read: dict[str, str]) -> dict[str, Any]:
