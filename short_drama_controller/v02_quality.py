@@ -19,6 +19,7 @@ def validate(project: Project) -> list[Issue]:
     items += [as_issue(x) for x in validate_source_coverage(project.data)]
     items += validate_assets(project)
     items += validate_project_pack(project)
+    items += validate_director_read(project)
     items += validate_shots(project)
     items += validate_shot_size_jump(project)
     return items
@@ -40,6 +41,36 @@ def validate_project_pack(project: Project) -> list[Issue]:
             items.append(Issue("BLOCKER", "project.pack_missing", f"项目缺 {field}", "ADD 补充并覆盖旧文件"))
     if has_two_person_dialogue(project) and not project.data.get("dialogue_coverage_ascii 对白覆盖图"):
         items.append(Issue("WARN", "storyboard.dialogue_coverage_missing", "双人对白项目缺 dialogue_coverage_ascii 对白覆盖图", "ADD 补充"))
+    return items
+
+
+def validate_director_read(project: Project) -> list[Issue]:
+    items: list[Issue] = []
+    director_read = project.data.get("director_read 导演读本", {})
+    required = [
+        "source_basis 原文依据",
+        "conflict_terms 冲突词",
+        "dialogue_basis 对白依据",
+        "relationship_basis 角色关系依据",
+        "scene_function 场景功能",
+        "scene_function_evidence 场景功能证据",
+        "scene_turn 场景转折",
+        "scene_turn_evidence 场景转折证据",
+        "power_shift 权力变化",
+        "power_shift_evidence 权力变化证据",
+        "subtext 潜台词",
+        "subtext_evidence 潜台词证据",
+        "director_intent 导演意图",
+        "director_read_confidence 导演读本置信度",
+    ]
+    for field in required:
+        if not director_read.get(field):
+            items.append(Issue("WARN", "director_read.missing_evidence", f"导演读本缺 {field}", "REBUILD 重新基于原文生成导演读本"))
+    confidence = director_read.get("director_read_confidence 导演读本置信度", "")
+    if confidence.startswith("low"):
+        items.append(Issue("WARN", "director_read.low_confidence", "导演读本置信度低，需要人工确认场景功能、转折、权力变化和潜台词", "CONFIRM 人工确认"))
+    if "模板" in str(director_read) or "固定模板" in str(director_read):
+        items.append(Issue("WARN", "director_read.template_like", "导演读本疑似模板化，需要重新从原文提取", "REBUILD 重新生成"))
     return items
 
 
