@@ -8,7 +8,7 @@ AI Short Drama Production Controller / AI短剧生产控制器
 
 本 Skill / 技能不是一键生成视频。它的交付物不是最终视频，而是导演对剧本进行拆分整理后的标准化生产物料包。
 
-用户给一个剧本、小说片段、口述创意或参考片拆解后，本 Skill / 技能需要交付：剧本拆解、资产锁定、分镜设计、生成提示词、质检返修、平台导出表。
+用户给一个剧本、小说片段、口述创意或参考片拆解后，本 Skill / 技能需要交付：剧本拆解、资产锁定、导演分镜、制片执行、声音设计、生成提示词、质检返修、平台导出表。
 
 ## 主入口
 
@@ -36,22 +36,17 @@ python scripts/install_for_codex.py
 
 ```text
 QA / 质检
+prompt / 生成提示词
+pipeline / 流程
 source_text / 原文
 source_coverage / 原文覆盖检查
-pipeline / 流程
-fallback_shot / 备用镜头
-prompt / 生成提示词
 asset_lock / 资产锁定
-```
-
-错误示例：
-
-```text
-QA
-source coverage
-pipeline
-fallback
-prompt
+director_intent / 导演意图
+clip_contract / 单段镜头合同
+producer_plan / 制片执行计划
+sound_plan / 声音设计计划
+project_state_capsule / 项目状态胶囊
+one_variable_retake / 单变量返修
 ```
 
 ## 硬规则
@@ -62,12 +57,26 @@ prompt
 4. `spoken_dialogue 出口对白` 必须有明确的 `speaker_spatial_anchor 说话人空间锚点`。
 5. `OS 画外音 / 内心独白 / 旁白` 镜头必须让画面人物全员闭口。
 6. 每个镜头必须包含景别、机位、运镜、运动轨迹、连续性锁定、备用镜头、声音字段。
-7. 高风险动作镜头可使用 `grid_cut_mode 宫格硬切模式` 和 `black_frame_anchor 黑屏冻结锚`。
-8. 返修必须直接替换旧文档，禁止生成 final、v2、fixed、new 等副本。
-9. 禁止新增无意义 Markdown / md文档。
-10. 禁止复制第三方提示词模板原文，只能提炼规则。
+7. 每个项目必须有 `director_read 导演读本`、`producer_plan 制片执行计划`、`sound_plan 声音设计计划`、`project_state_capsule 项目状态胶囊`。
+8. 每个镜头必须有 `director_intent 导演意图`、`this_clip_only 本段只拍`、`reserved_for_later 后续保留`、`planned_end_state 计划结束状态`。
+9. 高风险动作镜头可使用 `grid_cut_mode 宫格硬切模式` 和 `black_frame_anchor 黑屏冻结锚`。
+10. 返修必须直接替换旧文档，禁止生成 final、v2、fixed、new 等副本。
+11. 禁止新增无意义 Markdown / md文档。
+12. 禁止复制第三方提示词模板原文，只能提炼规则。
 
-## 交付物定义
+## 吸收的导演方法
+
+从 Emily2040/seedance-2.0 吸收通用导演方法，但不绑定 Seedance / 即梦平台：
+
+1. `Directing Engine 导演引擎`：先判断场景功能、场景转折、观众视角、权力变化、潜台词，再写镜头。
+2. `One Intention 单一导演意图`：每场戏只服务一个明确观众感受，镜头、光线、表演、声音都围绕它。
+3. `Sequence State 连续剧情状态`：整体规划，局部生成；下一段必须基于上一段真实生成结尾继续。
+4. `Clip Contract 单段镜头合同`：每段视频只完成一个明确任务，后续剧情不能提前演完。
+5. `Producer Plan 制片执行计划`：管理时长、素材、平台、风险、审批、成本和返修预算。
+6. `Sound Plan 声音设计计划`：独立管理对白、旁白、环境音、拟音、动作音、音乐和静默。
+7. `One Variable Retake 单变量返修`：失败后一次只改一个变量，防止越修越乱。
+
+## 交付物白名单
 
 用户给剧本后，最终只允许交付以下文档和表格。除非用户明确要求，禁止新增其它 md 文档。
 
@@ -76,12 +85,15 @@ project.yaml                 项目总控数据
 script.md                    剧本拆解文档
 assets.md                    资产锁定文档
 storyboard.md                分镜执行文档
+producer.md                  制片执行文档
+sound.md                     声音设计文档
 prompts.md                   生成提示词文档
 qa.md                        质检返修文档
 exports/video_prompts.md     视频提示词导出文档
 exports/grid_prompts.md      宫格硬切提示词导出文档
 exports/shot_table.csv       镜头执行表
 exports/sound_table.csv      声音设计表
+exports/producer_table.csv   制片执行表
 ```
 
 ## 禁止生成的文档
@@ -101,17 +113,19 @@ qa_final.md
 prompts_v2.md
 storyboard_fixed.md
 assets_new.md
+producer_final.md
+sound_v2.md
 ```
 
 如果某一环节有问题，修改后必须覆盖原文件，不能另存新文档。
 
-## 六个核心文档要求
+## 八个核心文档要求
 
 ### project.yaml 项目总控数据
 
 用途：给系统读取的唯一结构化母文件。
 
-必须包含：项目名、原文、制作范围、角色列表、场景列表、道具列表、对白列表、分镜列表、质检状态。
+必须包含：项目名、原文、制作范围、角色列表、场景列表、道具列表、对白列表、导演读本、制片计划、声音计划、项目状态胶囊、分镜列表、质检状态。
 
 ### script.md 剧本拆解文档
 
@@ -129,7 +143,19 @@ assets_new.md
 
 用途：导演分镜表。
 
-必须包含：镜头编号、对应原文、镜头目的、景别、机位、运镜、轴线、人物站位、动作轨迹、起始姿态、结束姿态、备用镜头。
+必须包含：镜头编号、对应原文、镜头目的、场景功能、场景转折、导演意图、景别、机位、运镜、轴线、人物站位、动作轨迹、起始姿态、结束姿态、备用镜头、单段镜头合同。
+
+### producer.md 制片执行文档
+
+用途：管理制作范围、分段计划、素材清单、平台计划、风险、审批节点、返修预算和成本。
+
+必须包含：制作范围、本集目标、时长计划、分段计划、素材清单、平台生成计划、风险记录、审批节点、返修预算、项目状态胶囊。
+
+### sound.md 声音设计文档
+
+用途：独立管理声音，不把声音当提示词附属品。
+
+必须包含：对白地图、画外音地图、环境音、拟音、动作音效、音乐设计、静默设计、口型同步备注、后期声音备注。
 
 ### prompts.md 生成提示词文档
 
@@ -150,9 +176,11 @@ assets_new.md
 1. 直接覆盖旧的 `script.md 剧本拆解文档`。
 2. 直接覆盖旧的 `assets.md 资产锁定文档`。
 3. 直接覆盖旧的 `storyboard.md 分镜执行文档`。
-4. 直接覆盖旧的 `prompts.md 生成提示词文档`。
-5. 直接覆盖旧的 `qa.md 质检返修文档`。
-6. 直接覆盖旧的 `exports/` 导出文件。
+4. 直接覆盖旧的 `producer.md 制片执行文档`。
+5. 直接覆盖旧的 `sound.md 声音设计文档`。
+6. 直接覆盖旧的 `prompts.md 生成提示词文档`。
+7. 直接覆盖旧的 `qa.md 质检返修文档`。
+8. 直接覆盖旧的 `exports/ 导出目录` 文件。
 
 禁止生成：`xxx_new.md`、`xxx_final.md`、`xxx_v2.md`、`xxx_fixed.md`。
 
@@ -164,6 +192,10 @@ v0.2 QA / 质检必须检查：
 - `source_coverage 原文覆盖检查`
 - `speaker_binding 说话人绑定`
 - `speaker_spatial_anchor 说话人空间锚点`
+- `director_intent 导演意图`
+- `clip_contract 单段镜头合同`
+- `producer_plan 制片执行计划`
+- `sound_plan 声音设计计划`
 - `shot_size_jump 景别跳变`
 - `camera_movement 机位运动`
 - `motion_path 运动轨迹`
@@ -192,9 +224,15 @@ extract_assets 资产提取
 ↓
 bind_dialogue_to_characters 说话人绑定
 ↓
-build_shots 分镜生成
+build_director_read 生成导演读本
 ↓
-attach_sound_and_prompts 音效与提示词生成
+build_shots 生成分镜和单段镜头合同
+↓
+build_producer_plan 生成制片执行计划
+↓
+build_sound_plan 生成声音设计计划
+↓
+attach_prompts 生成提示词
 ↓
 validate QA质检
 ↓
@@ -214,3 +252,4 @@ Codex / 编程代理使用本仓库时：
 5. 未经用户明确要求，不要把生成项目目录提交进仓库。
 6. 不要新增白名单之外的 md 文档。
 7. 修复旧环节时直接覆盖旧文档。
+8. 所有英文专业词必须带中文解释。
