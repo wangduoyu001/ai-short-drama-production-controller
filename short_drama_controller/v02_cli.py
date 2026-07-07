@@ -10,7 +10,7 @@ from .v02_exporters import export_project
 from .v02_io import read_project, write_project, write_text
 from .v02_models import Project
 from .v02_prompts import attach_sound_and_prompts
-from .v02_qa import summary, validate
+from .v02_quality import summary, validate
 from .v02_repair import repair_project
 from .v02_storyboard import build_shots
 
