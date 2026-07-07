@@ -17,11 +17,13 @@ def export_project(project: Project, out_dir: Path) -> None:
     write_text(export_dir / "negative_prompts.md", render_negative_prompts(project))
     write_text(export_dir / "fallback_shots.md", render_fallback_shots(project))
     write_text(export_dir / "grid_prompts.md", render_grid_prompts(project))
+    write_text(export_dir / "batch_inference.md", render_batch_inference(project))
     write_shot_csv(project, export_dir / "shot_table.csv")
     write_sound_csv(project, export_dir / "sound_table.csv")
     write_producer_csv(project, export_dir / "producer_table.csv")
     write_action_csv(project, export_dir / "action_table.csv")
     write_inference_csv(project, export_dir / "shot_inference_table.csv")
+    write_batch_csv(project, export_dir / "batch_inference_table.csv")
 
 
 def render_first_frame_prompts(project: Project) -> str:
@@ -81,6 +83,16 @@ def render_grid_prompts(project: Project) -> str:
     return "\n".join(lines)
 
 
+def render_batch_inference(project: Project) -> str:
+    lines = ["# batch_inference 批量推理导出文档"]
+    for batch in project.data.get("batch_inference 批量推理", []):
+        lines.append(f"\n## {batch.get('batch_id 批次编号', '')} {batch.get('shot_range 镜头范围', '')}\n")
+        lines.append(f"record_count 记录数：{batch.get('record_count 记录数', '')}")
+        for record in batch.get("records 批量记录", []):
+            lines.append(f"- {record.get('panel_index 批内序号')} / {record.get('shot_id 镜头编号')}：{record.get('continuity_note 连续性说明', '')}")
+    return "\n".join(lines)
+
+
 def write_shot_csv(project: Project, path: Path) -> None:
     fields = [
         "shot_id 镜头编号", "clip_id 单段编号", "clip_type 片段类型", "clip_duration_seconds 片段时长秒数", "model_duration_limit 模型时长限制", "shot_density 镜头密度", "clip_shot_index 片段内镜头序号",
@@ -118,6 +130,22 @@ def write_action_csv(project: Project, path: Path) -> None:
 def write_inference_csv(project: Project, path: Path) -> None:
     fields = ["shot_id 镜头编号", "first_frame_prompt 首帧提示词", "video_prompt 视频提示词", "end_frame_prompt 尾帧提示词", "negative_prompt 负面提示词", "fallback_shot 备用镜头"]
     write_csv(project, path, fields)
+
+
+def write_batch_csv(project: Project, path: Path) -> None:
+    fields = ["batch_id 批次编号", "shot_range 镜头范围", "panel_index 批内序号", "shot_id 镜头编号", "continuity_note 连续性说明"]
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for batch in project.data.get("batch_inference 批量推理", []):
+            for record in batch.get("records 批量记录", []):
+                writer.writerow({
+                    "batch_id 批次编号": batch.get("batch_id 批次编号", ""),
+                    "shot_range 镜头范围": batch.get("shot_range 镜头范围", ""),
+                    "panel_index 批内序号": record.get("panel_index 批内序号", ""),
+                    "shot_id 镜头编号": record.get("shot_id 镜头编号", ""),
+                    "continuity_note 连续性说明": record.get("continuity_note 连续性说明", ""),
+                })
 
 
 def write_csv(project: Project, path: Path, fields: list[str]) -> None:
