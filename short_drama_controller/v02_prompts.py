@@ -6,6 +6,7 @@ VISUAL_ONLY_FIELDS = [
     "人物", "服装", "场景", "道具", "构图", "景别", "光线", "色彩", "前中后景", "画幅比例",
 ]
 ABSTRACT_WORDS = ["让观众", "感觉", "潜台词", "权力变化", "导演意图", "观众感受", "证明自己", "退路", "底牌"]
+EMPTY_SCENE_WORDS = ["无人物", "无人空镜", "空无一人", "empty scene", "no character", "no characters"]
 
 
 def attach_sound_and_prompts(project: Project) -> None:
@@ -43,9 +44,11 @@ def add_sound(shot: dict) -> None:
 
 def build_image_prompt(project: Project, shot: dict) -> str:
     scene = project.get_scene(shot["scene_id 场景编号"]) or {}
+    has_characters = bool(shot.get("on_screen_characters 在场人物", []))
+    scene_prompt = sanitize_scene_visual_prompt(scene.get("visual_prompt 视觉提示词", "主场景，固定空间结构"), has_characters)
     characters = describe_characters(project, shot)
     parts = [
-        scene.get("visual_prompt 视觉提示词", "主场景，固定空间结构"),
+        scene_prompt,
         characters,
         f"动作：{shot.get('action_detail 动作细节', '')}",
         f"景别：{shot.get('shot_size 景别', '')}",
@@ -57,6 +60,21 @@ def build_image_prompt(project: Project, shot: dict) -> str:
         "无字幕，无水印，人物一致，服装一致，脸部一致，道具不消失",
     ]
     return clean_visual_prompt("，".join(x for x in parts if x))
+
+
+def sanitize_scene_visual_prompt(scene_prompt: str, has_characters: bool) -> str:
+    cleaned = scene_prompt or "主场景，固定空间结构"
+    if has_characters:
+        for word in EMPTY_SCENE_WORDS:
+            cleaned = cleaned.replace(word, "")
+    return normalize_commas(cleaned) or "主场景，固定空间结构"
+
+
+def normalize_commas(text: str) -> str:
+    cleaned = text
+    while "，，" in cleaned or ",," in cleaned or "，," in cleaned or ",，" in cleaned:
+        cleaned = cleaned.replace("，，", "，").replace(",,", ",").replace("，,", "，").replace(",，", "，")
+    return cleaned.strip("，, 、;；")
 
 
 def describe_characters(project: Project, shot: dict) -> str:
@@ -80,7 +98,7 @@ def clean_visual_prompt(prompt: str) -> str:
     cleaned = prompt
     for word in ABSTRACT_WORDS:
         cleaned = cleaned.replace(word, "")
-    return cleaned.replace("，，", "，").strip("，")
+    return normalize_commas(cleaned)
 
 
 def build_video_prompt(project: Project, shot: dict) -> str:
