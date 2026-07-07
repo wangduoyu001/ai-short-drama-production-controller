@@ -20,9 +20,13 @@ def build_project(text: str, title: str | None) -> Project:
     dialogues = bind_dialogue_to_characters(text, assets["characters 角色列表"])
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.3.0",
+        "skill_version 技能版本": "0.3.1",
         "source_text 原文": text,
-        "scope_gate 范围闸门": {"production_mode 制作模式": "beat_map 节拍驱动模式"},
+        "scope_gate 范围闸门": {
+            "production_mode 制作模式": "clip_first 片段优先模式",
+            "generation_clip_duration 生成片段时长": "4-15秒",
+            "shot_count_rule 镜头数量规则": "由 clip_type 片段类型决定，不再固定8-12镜",
+        },
         "dialogue_lines 对白列表": dialogues,
         **assets,
     })
@@ -90,6 +94,9 @@ def cmd_prompt(args: argparse.Namespace) -> None:
 def render_single_prompt(shot: dict) -> str:
     return "\n".join([
         f"shot_id 镜头编号：{shot.get('shot_id 镜头编号', '')}",
+        f"clip_id 片段编号：{shot.get('clip_id 单段编号', '')}",
+        f"clip_type 片段类型：{shot.get('clip_type 片段类型', '')}",
+        f"clip_duration_seconds 片段时长秒数：{shot.get('clip_duration_seconds 片段时长秒数', '')}",
         f"beat_id 节拍编号：{shot.get('beat_id 节拍编号', '')}",
         f"source_quote 原文节拍证据：{shot.get('source_quote 原文节拍证据', '')}",
         "\nimage_prompt 图片提示词：",
