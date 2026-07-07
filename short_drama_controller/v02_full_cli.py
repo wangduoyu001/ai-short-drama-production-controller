@@ -9,6 +9,7 @@ from .v02_batch_inference import attach_batch_inference
 from .v02_dialogue_bind import bind_dialogue_to_characters
 from .v02_director_docs import write_director_docs
 from .v02_exporters import export_project
+from .v02_grid_strategy import attach_grid_strategy
 from .v02_io import read_project, write_project, write_text
 from .v02_models import Project
 from .v02_preproduction import build_action_choreography, build_preproduction
@@ -42,6 +43,7 @@ def build_project(text: str, title: str | None) -> Project:
     build_preproduction(project)
     build_shots(project)
     attach_sound_and_prompts(project)
+    attach_grid_strategy(project)
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
@@ -84,6 +86,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     project = repair_project(load_project(project_dir), target_shot_id=args.shot)
     expand_project_assets(project)
     build_preproduction(project)
+    attach_grid_strategy(project)
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
