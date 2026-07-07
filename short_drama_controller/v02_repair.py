@@ -25,7 +25,7 @@ from .v02_storyboard import (
 
 def repair_project(project: Project, target_shot_id: str | None = None) -> Project:
     repair_assets(project)
-    if target_shot_id and project.data.get("beat_map 剧情节拍表") and project.shots:
+    if target_shot_id and not needs_rebuild_from_beats(project):
         repair_project_level(project)
         repair_shots(project, target_shot_id)
         repair_shot_sizes(project, target_shot_id)
@@ -40,6 +40,8 @@ def repair_project(project: Project, target_shot_id: str | None = None) -> Proje
 
 
 def needs_rebuild_from_beats(project: Project) -> bool:
+    if not project.data.get("clip_plan 片段计划"):
+        return True
     if not project.data.get("beat_map 剧情节拍表"):
         return True
     if not project.shots:
@@ -93,10 +95,13 @@ def repair_shots(project: Project, target_shot_id: str | None = None) -> None:
     scene = project.scenes[0] if project.scenes else {"scene_name 场景名": "主场景"}
     focus_character = project.characters[0] if project.characters else {"character_name 角色名": "画面主体"}
     beats = project.data.get("beat_map 剧情节拍表", [])
+    clip_plan = {clip.get("clip_id 片段编号"): clip for clip in project.data.get("clip_plan 片段计划", [])}
     for index, shot in enumerate(project.shots, start=1):
         if target_shot_id and shot.get("shot_id 镜头编号") != target_shot_id:
             continue
         beat = find_beat_for_shot(beats, shot, index)
+        clip_id = beat.get("clip_id 片段编号", shot.get("clip_id 单段编号", "CLIP001"))
+        clip = clip_plan.get(clip_id, {})
         if shot.get("camera_movement 机位运动") not in ALLOWED_CAMERA:
             shot["camera_movement 机位运动"] = default_camera
         purpose = shot.get("shot_purpose 镜头目的", beat.get("shot_hint 镜头建议", "reaction_shot 反应镜头"))
@@ -108,7 +113,12 @@ def repair_shots(project: Project, target_shot_id: str | None = None) -> None:
 
         shot.setdefault("beat_id 节拍编号", beat.get("beat_id 节拍编号", f"B{index:03d}"))
         shot.setdefault("source_quote 原文节拍证据", beat.get("source_quote 原文证据", evidence.get("evidence_quote 原文证据句", "")))
-        shot.setdefault("clip_id 单段编号", "CLIP01")
+        shot.setdefault("clip_id 单段编号", clip_id)
+        shot.setdefault("clip_type 片段类型", beat.get("clip_type 片段类型", clip.get("clip_type 片段类型", "establishing_clip 建立空间片段")))
+        shot.setdefault("clip_duration_seconds 片段时长秒数", beat.get("clip_duration_seconds 片段时长秒数", str(clip.get("duration_seconds 时长秒数", "10"))))
+        shot.setdefault("model_duration_limit 模型时长限制", beat.get("model_duration_limit 模型时长限制", clip.get("model_duration_limit 模型时长限制", "4-15秒")))
+        shot.setdefault("shot_density 镜头密度", beat.get("shot_density 镜头密度", clip.get("shot_density 镜头密度", "")))
+        shot.setdefault("clip_shot_index 片段内镜头序号", beat.get("clip_shot_index 片段内镜头序号", ""))
         shot.setdefault("director_intent 导演意图", project.data.get("director_read 导演读本", {}).get("director_intent 导演意图", "本镜服务原文节拍的可见变化"))
         shot["action_detail 动作细节"] = action
         shot.setdefault("performance_action 表演动作", action)
