@@ -6,6 +6,7 @@ from .v02_models import Issue, Project
 from .v02_qa import summary as base_summary
 from .v02_schema import validate_schema
 from .v02_source_coverage import validate_source_coverage
+from .v02_storyboard import is_high_risk_purpose
 
 ALLOWED_CAMERA = {"fixed_camera 固定机位", "slow_push_in 缓慢推进", "slight_lateral_move 轻微横移", "subtle_handheld 轻微手持"}
 SPATIAL_MARKERS = ["画面左", "画面右", "左侧", "右侧", "前景", "后景", "中景"]
@@ -30,10 +31,15 @@ def validate_project_pack(project: Project) -> list[Issue]:
         "producer_plan 制片执行计划",
         "sound_plan 声音设计计划",
         "project_state_capsule 项目状态胶囊",
+        "approval_gates 确认闸门",
+        "storyboard_layout 分镜总览布局",
+        "storyboard_grid_ascii 分镜总览简笔图",
     ]
     for field in required:
         if not project.data.get(field):
             items.append(Issue("BLOCKER", "project.pack_missing", f"项目缺 {field}", "ADD 补充并覆盖旧文件"))
+    if has_two_person_dialogue(project) and not project.data.get("dialogue_coverage_ascii 对白覆盖图"):
+        items.append(Issue("WARN", "storyboard.dialogue_coverage_missing", "双人对白项目缺 dialogue_coverage_ascii 对白覆盖图", "ADD 补充"))
     return items
 
 
@@ -63,13 +69,23 @@ def validate_shots(project: Project) -> list[Issue]:
         for field in ["ambience_sfx 环境底音", "foley_sfx 拟音", "prop_sfx 道具音", "action_sfx 动作音", "music_note 音乐建议"]:
             if not shot.get(field):
                 items.append(Issue("WARN", "sound.missing", f"{sid} 缺 {field}", "ADD 补充"))
-        for field in [
+        required_shot_fields = [
             "director_intent 导演意图", "this_clip_only 本段只拍", "reserved_for_later 后续保留",
             "planned_end_state 计划结束状态", "observed_end_state 实际生成结尾状态", "retake_variable 本次返修变量",
-            "sketch_ascii 简笔手绘图", "movement_arrow 运动箭头", "camera_arrow 镜头箭头", "screen_direction 画面方向",
-        ]:
+            "aspect_ratio 画幅比例", "character_symbols 人物符号", "sketch_ascii 简笔手绘图",
+            "movement_arrow 运动箭头", "camera_arrow 镜头箭头", "screen_direction 画面方向",
+            "layer_depth 前中后景", "prop_anchor 道具锚点",
+            "source_text_ref 原文引用位置", "evidence_quote 原文证据句", "adaptation_note 改编说明",
+            "invented_flag 是否AI补充", "source_confidence 原文置信度", "unknown_policy 不确定处理规则",
+        ]
+        for field in required_shot_fields:
             if not shot.get(field):
                 items.append(Issue("WARN", "director_pack.missing", f"{sid} 缺 {field}", "ADD 补充"))
+        purpose = shot.get("shot_purpose 镜头目的", "")
+        if is_high_risk_purpose(purpose) and not shot.get("motion_grid_ascii 动作拆解六宫格"):
+            items.append(Issue("WARN", "storyboard.motion_grid_missing", f"{sid} 高风险镜头缺 motion_grid_ascii 动作拆解六宫格", "ADD 补充"))
+        if shot.get("invented_flag 是否AI补充") == "director_bridge 导演补足":
+            items.append(Issue("WARN", "source.director_bridge", f"{sid} 含导演补足内容，需要用户确认：{shot.get('adaptation_note 改编说明', '')}", "CONFIRM 人工确认"))
     return items
 
 
@@ -88,6 +104,11 @@ def validate_shot_size_jump(project: Project) -> list[Issue]:
         if size and count >= 3:
             items.append(Issue("WARN", "shot_size.repeated", f"连续{count}个镜头同类景别：{size}，约SH{idx:03d}", "REWRITE 重写"))
     return items
+
+
+def has_two_person_dialogue(project: Project) -> bool:
+    modes = [s.get("shot_purpose 镜头目的", "") for s in project.shots]
+    return any("shot_a" in x for x in modes) and any("shot_b" in x for x in modes)
 
 
 def size_group(value: str) -> str:
