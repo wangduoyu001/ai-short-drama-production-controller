@@ -12,7 +12,7 @@ from .v02_prompts import attach_sound_and_prompts
 from .v02_quality import summary, validate
 from .v02_repair import repair_project
 from .v02_storyboard import build_shots
-from .v02_cli import render_prompts, render_qa, render_storyboard
+from .v02_cli import render_assets, render_producer, render_prompts, render_qa, render_script, render_sound, render_storyboard
 
 
 def build_project(text: str, title: str | None) -> Project:
@@ -20,7 +20,7 @@ def build_project(text: str, title: str | None) -> Project:
     dialogues = bind_dialogue_to_characters(text, assets["characters 角色列表"])
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.2.1",
+        "skill_version 技能版本": "0.2.2",
         "source_text 原文": text,
         "scope_gate 范围闸门": {"production_mode 制作模式": "fast_demo 快速样片模式"},
         "dialogue_lines 对白列表": dialogues,
@@ -34,7 +34,11 @@ def build_project(text: str, title: str | None) -> Project:
 def save_project(project: Project, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     write_project(out_dir / "project.yaml", project.data)
+    write_text(out_dir / "script.md", render_script(project))
+    write_text(out_dir / "assets.md", render_assets(project))
     write_text(out_dir / "storyboard.md", render_storyboard(project))
+    write_text(out_dir / "producer.md", render_producer(project))
+    write_text(out_dir / "sound.md", render_sound(project))
     write_text(out_dir / "prompts.md", render_prompts(project))
     write_text(out_dir / "qa.md", render_qa(summary(validate(project))))
 
