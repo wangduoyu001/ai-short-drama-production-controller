@@ -45,8 +45,10 @@ def main() -> None:
         "sound.md",
         "prompts.md",
         "qa.md",
+        "exports/first_frame_prompts.md",
         "exports/image_prompts.md",
         "exports/video_prompts.md",
+        "exports/end_frame_prompts.md",
         "exports/negative_prompts.md",
         "exports/fallback_shots.md",
         "exports/grid_prompts.md",
@@ -54,6 +56,7 @@ def main() -> None:
         "exports/sound_table.csv",
         "exports/producer_table.csv",
         "exports/action_table.csv",
+        "exports/shot_inference_table.csv",
     ]
     missing = [name for name in required if not (out_dir / name).exists()]
     if missing:
@@ -71,13 +74,16 @@ def main() -> None:
         "asset_lock 资产锁定",
         "event_blocks 事件段落拆分",
         "drama_structure 短剧结构",
+        "shot_inference 单镜推理",
+        "first_frame_prompt 首帧提示词",
+        "end_frame_prompt 尾帧提示词",
     ]:
         if text_item not in project_text:
             raise SystemExit(f"project.yaml missing: {text_item}")
 
     single = build_project("夜里，少年站在门口说：你终于来了。", "single_prompt_smoke")
     prompt_text = render_single_prompt(single.shots[0])
-    for text_item in ["image_prompt 图片提示词", "video_prompt 视频提示词", "sound_prompt 声音提示词", "negative_prompt 负面提示词", "fallback_prompt 备用提示词"]:
+    for text_item in ["first_frame_prompt 首帧提示词", "image_prompt 图片提示词", "video_prompt 视频提示词", "end_frame_prompt 尾帧提示词", "sound_prompt 声音提示词", "negative_prompt 负面提示词", "fallback_prompt 备用提示词"]:
         if text_item not in prompt_text:
             raise SystemExit(f"single prompt missing: {text_item}")
 
