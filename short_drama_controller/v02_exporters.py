@@ -24,6 +24,7 @@ def export_project(project: Project, out_dir: Path) -> None:
     write_action_csv(project, export_dir / "action_table.csv")
     write_inference_csv(project, export_dir / "shot_inference_table.csv")
     write_batch_csv(project, export_dir / "batch_inference_table.csv")
+    write_grid_strategy_csv(project, export_dir / "grid_strategy_table.csv")
 
 
 def render_first_frame_prompts(project: Project) -> str:
@@ -146,6 +147,22 @@ def write_batch_csv(project: Project, path: Path) -> None:
                     "shot_id 镜头编号": record.get("shot_id 镜头编号", ""),
                     "continuity_note 连续性说明": record.get("continuity_note 连续性说明", ""),
                 })
+
+
+def write_grid_strategy_csv(project: Project, path: Path) -> None:
+    fields = ["shot_id 镜头编号", "strategy_mode 策略模式", "risk_score 风险分", "character_count 人物数", "reason 选择理由"]
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for shot in project.shots:
+            strategy = shot.get("grid_strategy 宫格策略", {})
+            writer.writerow({
+                "shot_id 镜头编号": shot.get("shot_id 镜头编号", ""),
+                "strategy_mode 策略模式": strategy.get("strategy_mode 策略模式", ""),
+                "risk_score 风险分": strategy.get("risk_score 风险分", ""),
+                "character_count 人物数": strategy.get("character_count 人物数", ""),
+                "reason 选择理由": strategy.get("reason 选择理由", ""),
+            })
 
 
 def write_csv(project: Project, path: Path, fields: list[str]) -> None:
