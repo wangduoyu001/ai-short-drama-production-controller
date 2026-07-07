@@ -17,8 +17,23 @@ def validate(project: Project) -> list[Issue]:
     items += [as_issue(x) for x in validate_schema(project.data)]
     items += [as_issue(x) for x in validate_source_coverage(project.data)]
     items += validate_assets(project)
+    items += validate_project_pack(project)
     items += validate_shots(project)
     items += validate_shot_size_jump(project)
+    return items
+
+
+def validate_project_pack(project: Project) -> list[Issue]:
+    items: list[Issue] = []
+    required = [
+        "director_read 导演读本",
+        "producer_plan 制片执行计划",
+        "sound_plan 声音设计计划",
+        "project_state_capsule 项目状态胶囊",
+    ]
+    for field in required:
+        if not project.data.get(field):
+            items.append(Issue("BLOCKER", "project.pack_missing", f"项目缺 {field}", "ADD 补充并覆盖旧文件"))
     return items
 
 
@@ -48,6 +63,12 @@ def validate_shots(project: Project) -> list[Issue]:
         for field in ["ambience_sfx 环境底音", "foley_sfx 拟音", "prop_sfx 道具音", "action_sfx 动作音", "music_note 音乐建议"]:
             if not shot.get(field):
                 items.append(Issue("WARN", "sound.missing", f"{sid} 缺 {field}", "ADD 补充"))
+        for field in [
+            "director_intent 导演意图", "this_clip_only 本段只拍", "reserved_for_later 后续保留",
+            "planned_end_state 计划结束状态", "observed_end_state 实际生成结尾状态", "retake_variable 本次返修变量",
+        ]:
+            if not shot.get(field):
+                items.append(Issue("WARN", "director_pack.missing", f"{sid} 缺 {field}", "ADD 补充"))
     return items
 
 
