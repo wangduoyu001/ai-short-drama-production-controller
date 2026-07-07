@@ -10,8 +10,10 @@ from .v02_io import write_text
 def export_project(project: Project, out_dir: Path) -> None:
     export_dir = out_dir / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
+    write_text(export_dir / "first_frame_prompts.md", render_first_frame_prompts(project))
     write_text(export_dir / "image_prompts.md", render_image_prompts(project))
     write_text(export_dir / "video_prompts.md", render_video_prompts(project))
+    write_text(export_dir / "end_frame_prompts.md", render_end_frame_prompts(project))
     write_text(export_dir / "negative_prompts.md", render_negative_prompts(project))
     write_text(export_dir / "fallback_shots.md", render_fallback_shots(project))
     write_text(export_dir / "grid_prompts.md", render_grid_prompts(project))
@@ -19,6 +21,15 @@ def export_project(project: Project, out_dir: Path) -> None:
     write_sound_csv(project, export_dir / "sound_table.csv")
     write_producer_csv(project, export_dir / "producer_table.csv")
     write_action_csv(project, export_dir / "action_table.csv")
+    write_inference_csv(project, export_dir / "shot_inference_table.csv")
+
+
+def render_first_frame_prompts(project: Project) -> str:
+    lines = ["# first_frame_prompts 首帧提示词导出文档"]
+    for shot in project.shots:
+        lines.append(f"\n## {shot['shot_id 镜头编号']} {shot.get('clip_id 单段编号', '')}\n")
+        lines.append(shot.get("first_frame_prompt 首帧提示词", ""))
+    return "\n".join(lines)
 
 
 def render_image_prompts(project: Project) -> str:
@@ -34,6 +45,14 @@ def render_video_prompts(project: Project) -> str:
     for shot in project.shots:
         lines.append(f"\n## {shot['shot_id 镜头编号']} {shot.get('clip_id 单段编号', '')} {shot['shot_purpose 镜头目的']}\n")
         lines.append(shot.get("video_prompt 视频提示词", ""))
+    return "\n".join(lines)
+
+
+def render_end_frame_prompts(project: Project) -> str:
+    lines = ["# end_frame_prompts 尾帧提示词导出文档"]
+    for shot in project.shots:
+        lines.append(f"\n## {shot['shot_id 镜头编号']} {shot.get('clip_id 单段编号', '')}\n")
+        lines.append(shot.get("end_frame_prompt 尾帧提示词", ""))
     return "\n".join(lines)
 
 
@@ -96,6 +115,11 @@ def write_action_csv(project: Project, path: Path) -> None:
             writer.writerow({key: normalize_cell(row.get(key, "")) for key in fields})
 
 
+def write_inference_csv(project: Project, path: Path) -> None:
+    fields = ["shot_id 镜头编号", "first_frame_prompt 首帧提示词", "video_prompt 视频提示词", "end_frame_prompt 尾帧提示词", "negative_prompt 负面提示词", "fallback_shot 备用镜头"]
+    write_csv(project, path, fields)
+
+
 def write_csv(project: Project, path: Path, fields: list[str]) -> None:
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -107,4 +131,6 @@ def write_csv(project: Project, path: Path, fields: list[str]) -> None:
 def normalize_cell(value: object) -> str:
     if isinstance(value, list):
         return " / ".join(str(x) for x in value)
+    if isinstance(value, dict):
+        return " / ".join(f"{key}:{val}" for key, val in value.items())
     return str(value)
