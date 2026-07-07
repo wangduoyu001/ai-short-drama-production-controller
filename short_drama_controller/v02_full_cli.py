@@ -14,6 +14,7 @@ from .v02_preproduction import build_action_choreography, build_preproduction
 from .v02_prompts import attach_sound_and_prompts
 from .v02_quality import summary, validate
 from .v02_repair import repair_project
+from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
 from .v02_cli import render_assets, render_producer, render_prompts, render_qa, render_script, render_sound, render_storyboard
 
@@ -34,11 +35,13 @@ def build_project(text: str, title: str | None) -> Project:
         "dialogue_lines 对白列表": dialogues,
         **assets,
     })
+    build_source_segments(project)
     expand_project_assets(project)
     build_preproduction(project)
     build_shots(project)
     attach_sound_and_prompts(project)
     build_action_choreography(project)
+    attach_source_coverage(project)
     return project
 
 
@@ -78,6 +81,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     expand_project_assets(project)
     build_preproduction(project)
     build_action_choreography(project)
+    attach_source_coverage(project)
     save_project(project, project_dir)
     suffix = f" shot={args.shot}" if args.shot else ""
     print(f"v02_repair 返修替换完成: {project_dir}{suffix}")
