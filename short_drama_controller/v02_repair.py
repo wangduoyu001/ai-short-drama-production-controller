@@ -7,6 +7,7 @@ from .v02_storyboard import (
     build_approval_gates,
     build_camera_arrow,
     build_dialogue_coverage_ascii,
+    build_director_read,
     build_layer_depth,
     build_motion_grid_ascii,
     build_movement_arrow,
@@ -22,7 +23,7 @@ from .v02_storyboard import (
 
 def repair_project(project: Project) -> Project:
     repair_assets(project)
-    if not project.data.get("director_read 导演读本") or not project.data.get("producer_plan 制片执行计划"):
+    if not project.data.get("producer_plan 制片执行计划"):
         build_shots(project)
     repair_project_level(project)
     repair_shots(project)
@@ -33,10 +34,23 @@ def repair_project(project: Project) -> Project:
 def repair_project_level(project: Project) -> None:
     shots = project.shots
     project.data.setdefault("approval_gates 确认闸门", build_approval_gates())
+    refresh_director_read(project)
     if shots:
         project.data.setdefault("storyboard_layout 分镜总览布局", choose_storyboard_layout(len(shots)))
         project.data.setdefault("storyboard_grid_ascii 分镜总览简笔图", build_storyboard_grid_ascii(shots))
         project.data.setdefault("dialogue_coverage_ascii 对白覆盖图", build_dialogue_coverage_ascii(shots))
+
+
+def refresh_director_read(project: Project) -> None:
+    current = project.data.get("director_read 导演读本", {})
+    required = ["source_basis 原文依据", "conflict_terms 冲突词", "dialogue_basis 对白依据", "scene_function_evidence 场景功能证据", "director_read_confidence 导演读本置信度"]
+    if current and all(current.get(field) for field in required):
+        return
+    if not project.characters or not project.scenes:
+        return
+    char_a = project.characters[0]
+    char_b = project.characters[1] if len(project.characters) > 1 else project.characters[0]
+    project.data["director_read 导演读本"] = build_director_read(project.data.get("source_text 原文", ""), project.scenes[0], char_a, char_b)
 
 
 def repair_assets(project: Project) -> None:
