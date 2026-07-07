@@ -23,9 +23,13 @@ from .v02_storyboard import (
 )
 
 
-def repair_project(project: Project) -> Project:
+def repair_project(project: Project, target_shot_id: str | None = None) -> Project:
     repair_assets(project)
-    if needs_rebuild_from_beats(project):
+    if target_shot_id and project.data.get("beat_map 剧情节拍表") and project.shots:
+        repair_project_level(project)
+        repair_shots(project, target_shot_id)
+        repair_shot_sizes(project, target_shot_id)
+    elif needs_rebuild_from_beats(project):
         build_shots(project)
     else:
         repair_project_level(project)
@@ -83,14 +87,16 @@ def repair_assets(project: Project) -> None:
         scene.setdefault("fixed_props 固定物件", "门、墙面、地面")
 
 
-def repair_shots(project: Project) -> None:
+def repair_shots(project: Project, target_shot_id: str | None = None) -> None:
     default_camera = "fixed_camera 固定机位"
     source_text = project.data.get("source_text 原文", "")
     scene = project.scenes[0] if project.scenes else {"scene_name 场景名": "主场景"}
     focus_character = project.characters[0] if project.characters else {"character_name 角色名": "画面主体"}
     beats = project.data.get("beat_map 剧情节拍表", [])
     for index, shot in enumerate(project.shots, start=1):
-        beat = beats[index - 1] if index - 1 < len(beats) else {}
+        if target_shot_id and shot.get("shot_id 镜头编号") != target_shot_id:
+            continue
+        beat = find_beat_for_shot(beats, shot, index)
         if shot.get("camera_movement 机位运动") not in ALLOWED_CAMERA:
             shot["camera_movement 机位运动"] = default_camera
         purpose = shot.get("shot_purpose 镜头目的", beat.get("shot_hint 镜头建议", "reaction_shot 反应镜头"))
@@ -137,18 +143,31 @@ def repair_shots(project: Project) -> None:
         shot["sketch_ascii 简笔手绘图"] = build_sketch(shot)
 
 
-def repair_shot_sizes(project: Project) -> None:
+def find_beat_for_shot(beats: list[dict], shot: dict, index: int) -> dict:
+    beat_id = shot.get("beat_id 节拍编号")
+    for beat in beats:
+        if beat.get("beat_id 节拍编号") == beat_id:
+            return beat
+    return beats[index - 1] if index - 1 < len(beats) else {}
+
+
+def repair_shot_sizes(project: Project, target_shot_id: str | None = None) -> None:
     alternates = ["全景 WS", "中景 MS", "中近景 MCU", "近景 CU", "特写 ECU"]
     last = ""
     repeat = 0
     for shot in project.shots:
+        if target_shot_id and shot.get("shot_id 镜头编号") != target_shot_id:
+            group = size_group(shot.get("shot_size 景别", ""))
+            last = group
+            repeat = 1
+            continue
         group = size_group(shot.get("shot_size 景别", ""))
         if group == last:
             repeat += 1
         else:
             repeat = 1
             last = group
-        if repeat >= 3:
+        if repeat >= 3 or target_shot_id:
             for candidate in alternates:
                 if size_group(candidate) != group:
                     shot["shot_size 景别"] = candidate
