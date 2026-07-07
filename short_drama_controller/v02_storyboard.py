@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .v02_clip_plan import build_clip_plan_and_beats
 from .v02_models import Project
 
 ALLOWED_CAMERA = {
@@ -26,9 +27,12 @@ def build_shots(project: Project) -> None:
     char_a = first_character(project)
     char_b = project.characters[1] if len(project.characters) > 1 else char_a
     source_text = project.data.get("source_text 原文", "")
-    director_read = build_director_read(source_text, scene0, char_a, char_b)
-    beat_map = build_beat_map(source_text, project, director_read)
 
+    director_read = build_director_read(source_text, scene0, char_a, char_b)
+    source_beats = build_source_beats(source_text, project)
+    clip_plan, beat_map = build_clip_plan_and_beats(source_beats)
+
+    project.data["clip_plan 片段计划"] = clip_plan
     project.data["beat_map 剧情节拍表"] = beat_map
     project.data["director_read 导演读本"] = director_read
     project.data["project_state_capsule 项目状态胶囊"] = build_state_capsule(project, director_read)
@@ -37,9 +41,9 @@ def build_shots(project: Project) -> None:
 
     shots: list[dict[str, Any]] = []
     previous: dict[str, Any] | None = None
-    for index, beat in enumerate(beat_map[:12], start=1):
+    for index, beat in enumerate(beat_map, start=1):
         scene = choose_scene_for_beat(project, beat)
-        chars = choose_shot_characters(project, beat, index)
+        chars = choose_shot_characters(project, beat)
         shot = make_shot(f"SH{index:03d}", beat, scene, chars, index, director_read, project, previous)
         shots.append(shot)
         previous = shot
@@ -48,7 +52,8 @@ def build_shots(project: Project) -> None:
         "axis_line 轴线": "核心冲突人物连线；三人以上先用 master_shot 建立空间",
         "safe_camera_zone 安全机位区": "摄影机保持在轴线同侧，多人物时以主冲突两人为轴线",
         "scene_binding 场景绑定": "每个 shot 必须来自 beat.scene_hint 或原文场景证据",
-        "character_limit 人物限制": "单镜最多调度3个核心人物，更多人物改为crowd 群像或拆镜",
+        "character_limit 人物限制": "全局人物不限；单镜最多调度3个核心人物，更多人物改为crowd 群像或拆镜",
+        "clip_first 片段优先": "episode 单集先拆 generation_clip 生成片段；每个 clip 按 4-15秒模型限制设计",
     }
     project.data["shots 分镜列表"] = shots
     project.data["storyboard_layout 分镜总览布局"] = choose_storyboard_layout(len(shots))
@@ -56,10 +61,9 @@ def build_shots(project: Project) -> None:
     project.data["dialogue_coverage_ascii 对白覆盖图"] = build_dialogue_coverage_ascii(shots)
 
 
-def build_beat_map(text: str, project: Project, director_read: dict[str, str]) -> list[dict[str, str]]:
+def build_source_beats(text: str, project: Project) -> list[dict[str, str]]:
     units = split_source_units(text) or ["原文为空：需要用户补充故事原文"]
-    beats = [build_beat(unit, project, index) for index, unit in enumerate(units, start=1)]
-    return expand_coverage_beats(beats, project, director_read)
+    return [build_beat(unit, project, index) for index, unit in enumerate(units, start=1)]
 
 
 def build_beat(unit: str, project: Project, index: int) -> dict[str, str]:
@@ -83,48 +87,24 @@ def build_beat(unit: str, project: Project, index: int) -> dict[str, str]:
     }
 
 
+def build_beat_map(text: str, project: Project, director_read: dict[str, str]) -> list[dict[str, str]]:
+    _clip_plan, beat_map = build_clip_plan_and_beats(build_source_beats(text, project))
+    return beat_map
+
+
 def expand_coverage_beats(beats: list[dict[str, str]], project: Project, director_read: dict[str, str]) -> list[dict[str, str]]:
-    target = choose_target_shot_count(beats)
-    expanded = list(beats)
-    source = beats[-1]
-    while len(expanded) < target:
-        base = beats[(len(expanded) - len(beats)) % len(beats)] if beats else source
-        expanded.append(make_coverage_beat(base, len(expanded) + 1, project, director_read))
-    return expanded[:target]
+    _clip_plan, beat_map = build_clip_plan_and_beats(beats)
+    return beat_map
 
 
 def choose_target_shot_count(beats: list[dict[str, str]]) -> int:
-    if len(beats) <= 2:
-        return 6
-    if len(beats) <= 5:
-        return 8
-    return min(12, max(8, len(beats)))
+    _clip_plan, beat_map = build_clip_plan_and_beats(beats)
+    return len(beat_map)
 
 
 def make_coverage_beat(base: dict[str, str], index: int, project: Project, director_read: dict[str, str]) -> dict[str, str]:
-    role_cycle = ["reaction 反应", "insert 插入", "movement_result 动作结果", "hook 钩子"]
-    role = role_cycle[(index - 1) % len(role_cycle)]
-    focus = base.get("characters 相关角色") or first_character(project).get("character_name 角色名", "主角")
-    visible = base.get("visible_action 可见动作", "角色保持原文动作后的姿态")
-    if role.startswith("reaction"):
-        action, hint = f"{focus}听完上一句后停顿半秒，视线没有离开对方，呼吸压低", "reaction_shot 反应镜头"
-    elif role.startswith("insert"):
-        prop = first_prop_name(project) or "关键道具"
-        action, hint = f"{prop}在画面前景停住，角色手指收紧，承接原文动作：{visible}", "insert_shot 插入镜头"
-    elif role.startswith("movement_result"):
-        action, hint = f"动作结果落在角色站位变化上：{visible}之后，双方距离被重新拉开", "movement_result 运动结果"
-    else:
-        action, hint = f"镜头停在{focus}未说出口的反应上，为下一段保留悬念", "hook_shot 结尾钩子"
-    return {
-        **base,
-        "beat_id 节拍编号": f"B{index:03d}",
-        "visible_action 可见动作": action,
-        "dialogue 对白": "无",
-        "emotion_shift 情绪变化": director_read.get("scene_turn 场景转折", base.get("emotion_shift 情绪变化", "情绪压力延续")),
-        "subtext 潜台词": director_read.get("subtext 潜台词", base.get("subtext 潜台词", "动作背后保留未说破的态度")),
-        "shot_hint 镜头建议": hint,
-        "coverage_role 覆盖功能": role,
-    }
+    _clip_plan, beat_map = build_clip_plan_and_beats([base])
+    return beat_map[min(index - 1, len(beat_map) - 1)]
 
 
 def detect_scene_hint(unit: str, project: Project) -> str:
@@ -157,15 +137,20 @@ def choose_scene_for_beat(project: Project, beat: dict[str, str]) -> dict[str, A
     return first_scene(project)
 
 
-def choose_shot_characters(project: Project, beat: dict[str, str], index: int) -> list[dict[str, Any]]:
+def choose_shot_characters(project: Project, beat: dict[str, str]) -> list[dict[str, Any]]:
     if not project.characters:
         return [first_character(project)]
-    text = " ".join([beat.get("characters 相关角色", ""), beat.get("source_quote 原文证据", ""), beat.get("visible_action 可见动作", ""), beat.get("dialogue 对白", "")])
+    text = " ".join([
+        beat.get("characters 相关角色", ""),
+        beat.get("source_quote 原文证据", ""),
+        beat.get("visible_action 可见动作", ""),
+        beat.get("dialogue 对白", ""),
+    ])
     matched = [c for c in project.characters if c.get("character_name 角色名", "") and c.get("character_name 角色名", "") in text]
     if matched:
         return matched[:3]
     hint = beat.get("shot_hint 镜头建议", "")
-    if "master" in hint or "movement" in hint:
+    if "master" in hint or "movement" in hint or beat.get("clip_type 片段类型", "").startswith(("fight", "action")):
         return project.characters[:3]
     if "shot_b" in hint and len(project.characters) > 1:
         return [project.characters[1]]
@@ -200,14 +185,14 @@ def build_director_read(text: str, scene: dict[str, Any], char_a: dict[str, Any]
         "subtext 潜台词": subtext,
         "subtext_evidence 潜台词证据": find_best_sentence(units, subtext_hits or SUBTEXT_WORDS),
         "director_intent 导演意图": infer_director_intent(scene_function, scene_turn, subtext),
-        "directorial_voice 导演声音": "克制写实、少运镜、重表演动作、重环境声；所有镜头必须服务原文证据链",
+        "directorial_voice 导演声音": "clip_first 片段优先；每个 generation_clip 生成片段控制在4-15秒；打戏用高镜头密度硬切",
         "director_read_confidence 导演读本置信度": infer_director_confidence(conflict_hits, turn_hits, dialogue_samples),
     }
 
 
 def make_shot(shot_id: str, beat: dict[str, str], scene: dict[str, Any], chars: list[dict[str, Any]], index: int, director_read: dict[str, str], project: Project, previous_shot: dict[str, Any] | None = None) -> dict[str, Any]:
     purpose = beat.get("shot_hint 镜头建议", "reaction_shot 反应镜头")
-    camera = choose_camera(purpose)
+    camera = choose_camera(purpose, beat.get("clip_type 片段类型", ""))
     dialogue = beat.get("dialogue 对白", "无")
     focus = chars[0]
     visible_action = clean_action(beat.get("visible_action 可见动作", ""), beat)
@@ -215,7 +200,12 @@ def make_shot(shot_id: str, beat: dict[str, str], scene: dict[str, Any], chars: 
     shot: dict[str, Any] = {
         "shot_id 镜头编号": shot_id,
         "beat_id 节拍编号": beat.get("beat_id 节拍编号", f"B{index:03d}"),
-        "clip_id 单段编号": "CLIP01",
+        "clip_id 单段编号": beat.get("clip_id 片段编号", "CLIP001"),
+        "clip_type 片段类型": beat.get("clip_type 片段类型", "establishing_clip 建立空间片段"),
+        "clip_duration_seconds 片段时长秒数": beat.get("clip_duration_seconds 片段时长秒数", "10"),
+        "model_duration_limit 模型时长限制": beat.get("model_duration_limit 模型时长限制", "4-15秒"),
+        "shot_density 镜头密度": beat.get("shot_density 镜头密度", ""),
+        "clip_shot_index 片段内镜头序号": beat.get("clip_shot_index 片段内镜头序号", ""),
         "shot_purpose 镜头目的": purpose,
         "scene_id 场景编号": scene.get("scene_id 场景编号", "SCENE_01"),
         "location_name 场景名称": scene.get("scene_name 场景名", "主场景"),
@@ -244,7 +234,7 @@ def make_shot(shot_id: str, beat: dict[str, str], scene: dict[str, Any], chars: 
         "os_line 画外音": "无",
         "aspect_ratio 画幅比例": "16:9 横屏",
         "character_symbols 人物符号": "A○=主角，B○=对手，C○=第三人，P1=关键道具，▣=摄影机",
-        "shot_size 景别": choose_shot_size(index, purpose, previous_shot),
+        "shot_size 景别": choose_shot_size(beat, purpose, previous_shot),
         "camera_angle 机位角度": choose_camera_angle(purpose, len(chars)),
         "camera_movement 机位运动": camera,
         "camera_axis 轴线方向": "主冲突人物连线，摄影机保持同侧；三人以上先建立空间",
@@ -282,7 +272,9 @@ def clean_action(action: str, beat: dict[str, str]) -> str:
     return value or "角色在画面中保持可见姿态，等待用户补充原文动作"
 
 
-def choose_camera(purpose: str) -> str:
+def choose_camera(purpose: str, clip_type: str = "") -> str:
+    if clip_type.startswith("fight") or clip_type.startswith("action"):
+        return "slight_lateral_move 轻微横移"
     if "shot_" in purpose:
         return "slow_push_in 缓慢推进"
     if "movement" in purpose or "insert" in purpose:
@@ -290,8 +282,17 @@ def choose_camera(purpose: str) -> str:
     return "fixed_camera 固定机位"
 
 
-def choose_shot_size(index: int, purpose: str, previous_shot: dict[str, Any] | None) -> str:
-    preferred = "全景 WS" if "master" in purpose else "特写 ECU" if "insert" in purpose else "中景 MS" if "movement" in purpose else "近景 CU" if "shot_" in purpose else "中近景 MCU"
+def choose_shot_size(beat: dict[str, str], purpose: str, previous_shot: dict[str, Any] | None) -> str:
+    clip_type = beat.get("clip_type 片段类型", "")
+    local_index = int(beat.get("clip_shot_index 片段内镜头序号", "1") or 1)
+    if clip_type.startswith("fight"):
+        cycle = ["全景 WS", "中景 MS", "特写 ECU", "近景 CU", "中景 MS", "近景 CU", "特写 ECU", "中近景 MCU"]
+        preferred = cycle[(local_index - 1) % len(cycle)]
+    elif clip_type.startswith("action"):
+        cycle = ["全景 WS", "中景 MS", "特写 ECU", "中景 MS", "近景 CU", "中近景 MCU"]
+        preferred = cycle[(local_index - 1) % len(cycle)]
+    else:
+        preferred = "全景 WS" if "master" in purpose else "特写 ECU" if "insert" in purpose else "中景 MS" if "movement" in purpose else "近景 CU" if "shot_" in purpose else "中近景 MCU"
     if previous_shot and size_group(previous_shot.get("shot_size 景别", "")) == size_group(preferred):
         for alt in ["全景 WS", "中景 MS", "中近景 MCU", "近景 CU", "特写 ECU"]:
             if size_group(alt) != size_group(preferred) and size_group(alt) != size_group(previous_shot.get("shot_size 景别", "")):
@@ -330,6 +331,7 @@ def build_sketch(shot_or_purpose: Any, aspect_ratio: str | None = None) -> str:
 | FG 前景：{extract_depth_part(shot.get('layer_depth 前中后景', ''), 'FG')} |
 |                                      |
 | MG 中景：{build_character_line(shot)} |
+| clip / 片段：{shorten(shot.get('clip_id 单段编号', ''), 10)} {shorten(shot.get('clip_type 片段类型', ''), 14)} |
 | 方向：{shorten(shot.get('screen_direction 画面方向', ''), 30)} |
 | 动作：{shorten(shot.get('movement_arrow 运动箭头', ''), 30)} |
 |                                      |
@@ -393,6 +395,8 @@ def build_movement_arrow(purpose_or_beat: Any) -> str:
 
 def build_movement_arrow_from_beat(beat: dict[str, str], purpose: str) -> str:
     action = beat.get("visible_action 可见动作", "")
+    if "fight" in beat.get("clip_type 片段类型", ""):
+        return f"打戏节点：只执行本镜一个动作点；动作依据：{action[:50]}"
     if "movement" in purpose:
         return f"起点：A左侧或中景位置 -> 结果：动作后停在画面中部；依据动作：{action[:50]}"
     if "insert" in purpose:
@@ -426,13 +430,14 @@ def build_motion_grid_ascii(purpose_or_shot: Any) -> str:
 
 
 def is_high_risk_purpose(purpose: str) -> bool:
-    return any(word in purpose for word in ["movement", "insert", "运动", "result", "动作", "道具"])
+    return any(word in purpose for word in ["movement", "insert", "运动", "result", "动作", "道具", "fight", "打戏"])
 
 
 def is_high_risk_shot(shot: dict[str, Any]) -> bool:
+    clip_type = shot.get("clip_type 片段类型", "")
     purpose = shot.get("shot_purpose 镜头目的", "")
     action = shot.get("action_detail 动作细节", "")
-    return is_high_risk_purpose(purpose) or any(word in action for word in CONFLICT_WORDS + PROP_WORDS)
+    return clip_type.startswith(("fight", "action")) or is_high_risk_purpose(purpose) or any(word in action for word in CONFLICT_WORDS + PROP_WORDS)
 
 
 def first_dialogue(text: str) -> str:
@@ -603,16 +608,19 @@ def build_fallback_shot(beat: dict[str, str], purpose: str) -> str:
 
 
 def choose_storyboard_layout(shot_count: int) -> str:
+    if shot_count <= 4:
+        return "1x4 四宫格"
     if shot_count <= 8:
         return "2x4 八宫格"
-    if shot_count == 9:
-        return "3x3 九宫格"
-    return "3x4 十二宫格"
+    if shot_count <= 12:
+        return "3x4 十二宫格"
+    rows = (shot_count + 3) // 4
+    return f"{rows}x4 多宫格"
 
 
 def build_storyboard_grid_ascii(shots: list[dict[str, Any]]) -> str:
     layout = choose_storyboard_layout(len(shots))
-    cols = 4 if layout.startswith("2x4") or layout.startswith("3x4") else 3
+    cols = 4
     rows = (len(shots) + cols - 1) // cols
     cell_w = 18
     lines: list[str] = [f"storyboard_layout 分镜总览布局：{layout}"]
@@ -620,7 +628,7 @@ def build_storyboard_grid_ascii(shots: list[dict[str, Any]]) -> str:
     for row in range(rows):
         lines.append(border)
         chunk = shots[row * cols:(row + 1) * cols]
-        for field in ["shot_id 镜头编号", "beat_id 节拍编号", "scene_id 场景编号"]:
+        for field in ["shot_id 镜头编号", "clip_id 单段编号", "beat_id 节拍编号", "scene_id 场景编号"]:
             cells = [f" {shorten(str(shot.get(field, '')), cell_w - 2):<{cell_w - 2}} " for shot in chunk]
             while len(cells) < cols:
                 cells.append(" " * cell_w)
@@ -638,11 +646,35 @@ def build_dialogue_coverage_ascii(shots: list[dict[str, Any]]) -> str:
 
 
 def build_state_capsule(project: Project, director_read: dict[str, str]) -> dict[str, Any]:
-    return {"accepted_clip 已接受片段": "none 尚未生成", "observed_start_state 实际起始状态": "待用户回填", "observed_end_state 实际结束状态": "待用户回填", "character_state 角色状态": [c.get("character_name 角色名", "") for c in project.characters], "scene_state 场景状态": [s.get("scene_name 场景名", "") for s in project.scenes], "prop_state 道具状态": [p.get("prop_name 道具名", "") for p in project.props], "director_intent 导演意图": director_read["director_intent 导演意图"], "next_clip_task 下一段任务": "先生成本段，用户确认实际结尾后再写下一段"}
+    return {
+        "accepted_clip 已接受片段": "none 尚未生成",
+        "observed_start_state 实际起始状态": "待用户回填",
+        "observed_end_state 实际结束状态": "待用户回填",
+        "character_state 角色状态": [c.get("character_name 角色名", "") for c in project.characters],
+        "scene_state 场景状态": [s.get("scene_name 场景名", "") for s in project.scenes],
+        "prop_state 道具状态": [p.get("prop_name 道具名", "") for p in project.props],
+        "director_intent 导演意图": director_read["director_intent 导演意图"],
+        "next_clip_task 下一段任务": "先生成当前 generation_clip 生成片段；用户确认实际结尾后再续写下一 clip",
+    }
 
 
 def build_producer_plan(project: Project) -> dict[str, Any]:
-    return {"production_scope 制作范围": "默认按原文密度生成6-12镜；原文薄时不强撑60-90秒", "episode_goal 本集目标": "把原文拆成可生成视频的导演物料包，不直接交付成片", "duration_plan 时长计划": "每镜约4-8秒；对白少时压缩时长，避免空镜头水时长", "clip_plan 分段计划": "默认先做CLIP01；下一段必须基于用户确认的实际结尾继续", "asset_checklist 素材清单": ["角色三视图或脸部参考", "主场景概念图", "关键道具图", "首帧图或上一段末帧"], "platform_plan 平台生成计划": "先输出通用提示词，再按即梦、可灵、LibTV、ComfyUI等平台适配", "risk_log 风险记录": ["人物一致性", "口型误开", "动作崩坏", "场景跳变", "声音与对白冲突"], "approval_gates 审批节点": ["确认原文覆盖", "确认资产锁", "确认分镜", "确认提示词", "确认实际生成结尾"], "retake_budget 返修预算": "每个关键镜头优先2-3次；每次只改一个变量", "cost_note 成本备注": "高风险动作镜头先低成本测试，不直接批量生成"}
+    clip_plan = project.data.get("clip_plan 片段计划", [])
+    return {
+        "production_scope 制作范围": "clip_first 片段优先；单集不设死场景数和人物数，按原文拆成多个4-15秒 generation_clip 生成片段",
+        "episode_goal 本集目标": "把原文拆成可生成视频的导演物料包，不直接交付成片",
+        "duration_plan 时长计划": "每个 generation_clip 生成片段 4-15 秒；episode 总时长由 clip_plan 累加",
+        "clip_plan 分段计划": clip_plan,
+        "shot_density_rule 镜头密度规则": "对白3-6镜；动作6-12镜；打戏10-24镜；转场1-4镜；情绪2-5镜",
+        "scene_rule 场景规则": "全片场景数由原文决定；单个 clip 优先服务一个主场景",
+        "character_rule 人物规则": "全局人物数由原文决定；单个 shot 最多调度3个核心人物",
+        "model_limit 模型限制": "当前按主流视频模型4-15秒短片段限制组织生产",
+        "asset_checklist 素材清单": ["角色三视图或脸部参考", "主场景概念图", "关键道具图", "首帧图或上一段末帧"],
+        "platform_plan 平台生成计划": "先输出通用提示词，再按即梦、可灵、LibTV、ComfyUI等平台适配",
+        "risk_log 风险记录": ["人物一致性", "口型误开", "动作崩坏", "场景跳变", "声音与对白冲突"],
+        "approval_gates 审批节点": ["确认原文覆盖", "确认资产锁", "确认分镜", "确认提示词", "确认实际生成结尾"],
+        "retake_budget 返修预算": "每个关键镜头优先2-3次；每次只改一个变量",
+    }
 
 
 def build_approval_gates() -> dict[str, str]:
