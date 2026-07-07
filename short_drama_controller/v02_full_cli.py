@@ -20,7 +20,7 @@ def build_project(text: str, title: str | None) -> Project:
     dialogues = bind_dialogue_to_characters(text, assets["characters 角色列表"])
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.2.2",
+        "skill_version 技能版本": "0.2.3",
         "source_text 原文": text,
         "scope_gate 范围闸门": {"production_mode 制作模式": "fast_demo 快速样片模式"},
         "dialogue_lines 对白列表": dialogues,
@@ -79,6 +79,28 @@ def cmd_grid(args: argparse.Namespace) -> None:
     print(shot.get("grid_prompt 宫格提示词") or "该镜头未判定为宫格硬切高风险镜头。")
 
 
+def cmd_prompt(args: argparse.Namespace) -> None:
+    project = build_project(args.text.strip(), args.title or "single_prompt 单提示词")
+    shot = next((x for x in project.shots if x["shot_id 镜头编号"] == args.shot), project.shots[0])
+    print(render_single_prompt(shot))
+
+
+def render_single_prompt(shot: dict) -> str:
+    return "\n".join([
+        f"shot_id 镜头编号：{shot.get('shot_id 镜头编号', '')}",
+        "\nimage_prompt 图片提示词：",
+        shot.get("image_prompt 图片提示词", ""),
+        "\nvideo_prompt 视频提示词：",
+        shot.get("video_prompt 视频提示词", ""),
+        "\nsound_prompt 声音提示词：",
+        f"发声模式：{shot.get('speaker_mode 发声模式', '')}；嘴型状态：{shot.get('mouth_state 嘴型状态', '')}；环境底音：{shot.get('ambience_sfx 环境底音', '')}；拟音：{shot.get('foley_sfx 拟音', '')}；音乐：{shot.get('music_note 音乐建议', '')}",
+        "\nnegative_prompt 负面提示词：",
+        "禁止换脸，禁止换服装，禁止跳轴，禁止复杂运镜，禁止道具消失，禁止字幕水印，禁止提前演完后续剧情",
+        "\nfallback_prompt 备用提示词：",
+        shot.get("fallback_shot 备用镜头", ""),
+    ])
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="short-drama-controller-v02")
     sub = parser.add_subparsers(required=True)
@@ -95,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project", required=True)
     p.add_argument("--shot", required=True)
     p.set_defaults(func=cmd_grid)
+    p = sub.add_parser("prompt")
+    p.add_argument("--text", required=True)
+    p.add_argument("--shot", default="SH001")
+    p.add_argument("--title")
+    p.set_defaults(func=cmd_prompt)
     return parser
 
 
