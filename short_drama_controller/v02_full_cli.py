@@ -62,8 +62,10 @@ def cmd_qa(args: argparse.Namespace) -> None:
 
 def cmd_repair(args: argparse.Namespace) -> None:
     project_dir = Path(args.project)
-    save_project(repair_project(load_project(project_dir)), project_dir)
-    print(f"v02_repair 返修替换完成: {project_dir}")
+    project = repair_project(load_project(project_dir), target_shot_id=args.shot)
+    save_project(project, project_dir)
+    suffix = f" shot={args.shot}" if args.shot else ""
+    print(f"v02_repair 返修替换完成: {project_dir}{suffix}")
 
 
 def cmd_export(args: argparse.Namespace) -> None:
@@ -106,10 +108,14 @@ def render_single_prompt(shot: dict) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="short-drama-controller-v02")
     sub = parser.add_subparsers(required=True)
-    for name, func in [("qa", cmd_qa), ("repair", cmd_repair), ("export", cmd_export)]:
+    for name, func in [("qa", cmd_qa), ("export", cmd_export)]:
         p = sub.add_parser(name)
         p.add_argument("--project", required=True)
         p.set_defaults(func=func)
+    p = sub.add_parser("repair")
+    p.add_argument("--project", required=True)
+    p.add_argument("--shot", help="targeted repair / 定向返修，例如 SH003")
+    p.set_defaults(func=cmd_repair)
     p = sub.add_parser("init")
     p.add_argument("--input", required=True)
     p.add_argument("--out", required=True)
