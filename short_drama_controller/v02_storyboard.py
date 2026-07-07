@@ -129,6 +129,10 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "camera_angle 机位角度": "轴线同侧，侧前方约30度",
         "camera_movement 机位运动": camera,
         "camera_axis 轴线方向": "A-B连线，摄影机在同侧",
+        "sketch_ascii 简笔手绘图": build_sketch(purpose),
+        "movement_arrow 运动箭头": build_movement_arrow(purpose),
+        "camera_arrow 镜头箭头": build_camera_arrow(camera),
+        "screen_direction 画面方向": "A在画面左侧，B在画面右侧；保持同侧轴线，不跳轴",
         "motion_path 运动轨迹": "无大位移；如有运动，只保留起势、特写、结果",
         "entry_pose 起始姿态": entry_pose,
         "exit_pose 结束姿态": exit_pose,
@@ -144,3 +148,74 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "retake_variable 本次返修变量": "none 未返修；返修时一次只改一个变量",
         "fallback_shot 备用镜头": "改为侧脸、背影、手部、道具或反应镜头",
     }
+
+
+def build_sketch(purpose: str) -> str:
+    if "master" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│ A○ 左侧三分之一       右侧三分之一 ○B │
+│    视线 →──────────────← 视线        │
+│                                      │
+│              ▣ 摄影机                │
+└──────────────────────────────────────┘"""
+    if "shot_a" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│ A○ 近景占画面左/中                  │
+│  视线 → 向画面右，B保持画外方向       │
+│                                      │
+│          ▣ 摄影机：侧前方30度         │
+└──────────────────────────────────────┘"""
+    if "shot_b" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│                  B○ 近景占画面右/中  │
+│       A保持画外方向，← 视线           │
+│                                      │
+│          ▣ 摄影机：侧前方30度         │
+└──────────────────────────────────────┘"""
+    if "insert" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│          手部/道具 特写 ECU          │
+│              ○───▶ 触碰/握紧/停顿     │
+│                                      │
+│              ▣ 固定特写              │
+└──────────────────────────────────────┘"""
+    if "movement" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│ A○ 起点 ───────▶ 结果位置        ○B │
+│       动作方向保持左 → 右             │
+│                                      │
+│          ▣ 摄影机轻微横移跟随         │
+└──────────────────────────────────────┘"""
+    if "reaction" in purpose:
+        return """┌──────────── 画面构图 ────────────┐
+│                  B○ 反应近景         │
+│       ← 视线回看画面左侧事件          │
+│                                      │
+│              ▣ 固定机位              │
+└──────────────────────────────────────┘"""
+    return """┌──────────── 画面构图 ────────────┐
+│ A○ 前景/中景                         │
+│       视线或身体朝向 → 未知威胁/下一镜 │
+│                                      │
+│              ▣ 固定机位              │
+└──────────────────────────────────────┘"""
+
+
+def build_movement_arrow(purpose: str) -> str:
+    if "movement" in purpose:
+        return "A 左侧起点 → 画面中部结果位；只保留动作结果，不做复杂连续打斗"
+    if "insert" in purpose:
+        return "手部/道具：静止 → 轻触/握紧 → 停顿"
+    if "shot_b" in purpose:
+        return "视线方向：B → 画面左侧"
+    return "视线方向：A → 画面右侧；人物大位置不变"
+
+
+def build_camera_arrow(camera: str) -> str:
+    if camera == "slow_push_in 缓慢推进":
+        return "摄影机：▣ → 轻微向前推进"
+    if camera == "slight_lateral_move 轻微横移":
+        return "摄影机：▣ 左右轻微横移，不跨轴线"
+    if camera == "subtle_handheld 轻微手持":
+        return "摄影机：▣ 轻微手持晃动，保持主体稳定"
+    return "摄影机：▣ 固定不动"
