@@ -7,6 +7,7 @@ VISUAL_ONLY_FIELDS = [
 ]
 ABSTRACT_WORDS = ["让观众", "感觉", "潜台词", "权力变化", "导演意图", "观众感受", "证明自己", "退路", "底牌"]
 EMPTY_SCENE_WORDS = ["无人物", "无人空镜", "空无一人", "empty scene", "no character", "no characters"]
+DEFAULT_NEGATIVE_PROMPT = "禁止换脸，禁止换服装，禁止跳轴，禁止复杂运镜，禁止道具消失，禁止字幕水印，禁止提前演完后续剧情，禁止纯英文字幕，禁止现代物件乱入"
 
 
 def attach_sound_and_prompts(project: Project) -> None:
@@ -14,6 +15,7 @@ def attach_sound_and_prompts(project: Project) -> None:
     for shot in project.shots:
         add_sound(shot)
         shot["image_prompt 图片提示词"] = build_image_prompt(project, shot)
+        shot["negative_prompt 负面提示词"] = build_negative_prompt(shot)
         shot["video_prompt 视频提示词"] = build_video_prompt(project, shot)
         shot["grid_prompt 宫格提示词"] = build_grid_prompt(shot) if should_use_grid_prompt(shot) else ""
 
@@ -47,6 +49,8 @@ def build_image_prompt(project: Project, shot: dict) -> str:
     has_characters = bool(shot.get("on_screen_characters 在场人物", []))
     scene_prompt = sanitize_scene_visual_prompt(scene.get("visual_prompt 视觉提示词", "主场景，固定空间结构"), has_characters)
     characters = describe_characters(project, shot)
+    style = project.data.get("story_bible 世界观圣经", {}).get("visual_style 视觉风格", "电影写实，低饱和色彩")
+    palette = project.data.get("story_bible 世界观圣经", {}).get("color_palette 色卡", "冷灰、暖黄、暗棕")
     parts = [
         scene_prompt,
         characters,
@@ -56,10 +60,19 @@ def build_image_prompt(project: Project, shot: dict) -> str:
         f"机位：{shot.get('camera_angle 机位角度', '')}",
         f"前中后景：{shot.get('layer_depth 前中后景', '')}",
         f"道具：{shot.get('prop_anchor 道具锚点', '')}",
+        f"视觉风格：{style}",
+        f"色卡：{palette}",
         f"画幅比例：{shot.get('aspect_ratio 画幅比例', '16:9 横屏')}",
         "无字幕，无水印，人物一致，服装一致，脸部一致，道具不消失",
     ]
     return clean_visual_prompt("，".join(x for x in parts if x))
+
+
+def build_negative_prompt(shot: dict) -> str:
+    extra = ""
+    if shot.get("clip_type 片段类型", "").startswith("fight"):
+        extra = "，禁止一镜连续复杂打斗，禁止肢体融合，禁止兵器变形，禁止攻击方向混乱"
+    return DEFAULT_NEGATIVE_PROMPT + extra
 
 
 def sanitize_scene_visual_prompt(scene_prompt: str, has_characters: bool) -> str:
@@ -81,11 +94,15 @@ def describe_characters(project: Project, shot: dict) -> str:
     ids = set(shot.get("on_screen_characters 在场人物", []))
     if not ids:
         return "无人空镜，保留场景固定物件"
+    cards = {c.get("character_id 角色编号"): c for c in project.data.get("character_cards 角色卡", [])}
     items = []
     for char in project.characters:
-        if char.get("character_id 角色编号") in ids:
+        cid = char.get("character_id 角色编号")
+        if cid in ids:
+            card = cards.get(cid, {})
             items.append("/".join([
                 char.get("character_name 角色名", "角色"),
+                card.get("age_feel 年龄感", "年龄感固定"),
                 char.get("face_shape 脸型", "固定脸型"),
                 char.get("hair_style 发型", "固定发型"),
                 char.get("clothing_lock 服装锁定", "固定服装"),
@@ -128,7 +145,7 @@ def build_video_prompt(project: Project, shot: dict) -> str:
         f"observed_end_state 实际生成结尾状态：{shot.get('observed_end_state 实际生成结尾状态', '待用户回填')}",
         f"continuity_locks 连续性锁定：{shot['continuity_locks 连续性锁定']}",
         f"allowed_changes 允许变化：{shot.get('allowed_changes 允许变化', '')}",
-        "negative_prompt 负面提示词：禁止换脸，禁止换服装，禁止跳轴，禁止复杂运镜，禁止道具消失，禁止字幕水印，禁止提前演完后续剧情",
+        f"negative_prompt 负面提示词：{shot.get('negative_prompt 负面提示词', DEFAULT_NEGATIVE_PROMPT)}",
         f"fallback_prompt 备用提示词：{shot['fallback_shot 备用镜头']}",
     ])
 
@@ -137,6 +154,8 @@ def should_use_grid_prompt(shot: dict) -> bool:
     action = shot.get("action_detail 动作细节", "")
     purpose = shot.get("shot_purpose 镜头目的", "")
     risk_words = ["movement", "insert", "运动", "result", "动作", "道具", "刀", "剑", "握", "推", "转身", "停下", "冲", "退", "门", "碗"]
+    if shot.get("clip_type 片段类型", "").startswith("fight"):
+        return True
     if any(x in purpose for x in risk_words):
         return True
     if any(x in action for x in risk_words):
