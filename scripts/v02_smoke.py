@@ -52,11 +52,13 @@ def main() -> None:
         "exports/negative_prompts.md",
         "exports/fallback_shots.md",
         "exports/grid_prompts.md",
+        "exports/batch_inference.md",
         "exports/shot_table.csv",
         "exports/sound_table.csv",
         "exports/producer_table.csv",
         "exports/action_table.csv",
         "exports/shot_inference_table.csv",
+        "exports/batch_inference_table.csv",
     ]
     missing = [name for name in required if not (out_dir / name).exists()]
     if missing:
@@ -75,6 +77,7 @@ def main() -> None:
         "event_blocks 事件段落拆分",
         "drama_structure 短剧结构",
         "shot_inference 单镜推理",
+        "batch_inference 批量推理",
         "first_frame_prompt 首帧提示词",
         "end_frame_prompt 尾帧提示词",
     ]:
