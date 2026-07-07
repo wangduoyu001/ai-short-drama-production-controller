@@ -5,9 +5,11 @@ from pathlib import Path
 
 from .v02_assets import extract_assets
 from .v02_dialogue_bind import bind_dialogue_to_characters
+from .v02_director_docs import write_director_docs
 from .v02_exporters import export_project
 from .v02_io import read_project, write_project, write_text
 from .v02_models import Project
+from .v02_preproduction import build_action_choreography, build_preproduction
 from .v02_prompts import attach_sound_and_prompts
 from .v02_quality import summary, validate
 from .v02_repair import repair_project
@@ -20,18 +22,21 @@ def build_project(text: str, title: str | None) -> Project:
     dialogues = bind_dialogue_to_characters(text, assets["characters 角色列表"])
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.3.1",
+        "skill_version 技能版本": "0.4.0",
         "source_text 原文": text,
         "scope_gate 范围闸门": {
-            "production_mode 制作模式": "clip_first 片段优先模式",
+            "production_mode 制作模式": "director_package 导演物料包模式",
+            "preproduction_required 前期拆解必需": "chapter_intake / story_bible / character_cards / scene_plan / asset_lock",
             "generation_clip_duration 生成片段时长": "4-15秒",
-            "shot_count_rule 镜头数量规则": "由 clip_type 片段类型决定，不再固定8-12镜",
+            "shot_count_rule 镜头数量规则": "由 event_blocks 和 clip_type 决定，不固定8-12镜",
         },
         "dialogue_lines 对白列表": dialogues,
         **assets,
     })
+    build_preproduction(project)
     build_shots(project)
     attach_sound_and_prompts(project)
+    build_action_choreography(project)
     return project
 
 
@@ -44,6 +49,7 @@ def save_project(project: Project, out_dir: Path) -> None:
     write_text(out_dir / "producer.md", render_producer(project))
     write_text(out_dir / "sound.md", render_sound(project))
     write_text(out_dir / "prompts.md", render_prompts(project))
+    write_director_docs(project, out_dir)
     write_text(out_dir / "qa.md", render_qa(summary(validate(project))))
 
 
@@ -67,6 +73,8 @@ def cmd_qa(args: argparse.Namespace) -> None:
 def cmd_repair(args: argparse.Namespace) -> None:
     project_dir = Path(args.project)
     project = repair_project(load_project(project_dir), target_shot_id=args.shot)
+    build_preproduction(project)
+    build_action_choreography(project)
     save_project(project, project_dir)
     suffix = f" shot={args.shot}" if args.shot else ""
     print(f"v02_repair 返修替换完成: {project_dir}{suffix}")
@@ -106,7 +114,7 @@ def render_single_prompt(shot: dict) -> str:
         "\nsound_prompt 声音提示词：",
         f"发声模式：{shot.get('speaker_mode 发声模式', '')}；嘴型状态：{shot.get('mouth_state 嘴型状态', '')}；环境底音：{shot.get('ambience_sfx 环境底音', '')}；拟音：{shot.get('foley_sfx 拟音', '')}；音乐：{shot.get('music_note 音乐建议', '')}",
         "\nnegative_prompt 负面提示词：",
-        "禁止换脸，禁止换服装，禁止跳轴，禁止复杂运镜，禁止道具消失，禁止字幕水印，禁止提前演完后续剧情",
+        shot.get("negative_prompt 负面提示词", "禁止换脸，禁止换服装，禁止跳轴，禁止复杂运镜，禁止道具消失，禁止字幕水印，禁止提前演完后续剧情"),
         "\nfallback_prompt 备用提示词：",
         shot.get("fallback_shot 备用镜头", ""),
     ])
