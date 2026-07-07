@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .v02_clip_plan import MAX_CLIP_SECONDS, VALID_CLIP_TYPES
 from .v02_models import Issue, Project
 from .v02_qa import summary as base_summary
 from .v02_schema import validate_schema
@@ -21,6 +22,7 @@ def validate(project: Project) -> list[Issue]:
     items += [as_issue(x) for x in validate_source_coverage(project.data)]
     items += validate_assets(project)
     items += validate_project_pack(project)
+    items += validate_clip_plan(project)
     items += validate_beat_map(project)
     items += validate_director_read(project)
     items += validate_shots(project)
@@ -31,6 +33,7 @@ def validate(project: Project) -> list[Issue]:
 def validate_project_pack(project: Project) -> list[Issue]:
     items: list[Issue] = []
     required = [
+        "clip_plan 片段计划",
         "beat_map 剧情节拍表",
         "director_read 导演读本",
         "producer_plan 制片执行计划",
@@ -48,10 +51,33 @@ def validate_project_pack(project: Project) -> list[Issue]:
     return items
 
 
+def validate_clip_plan(project: Project) -> list[Issue]:
+    items: list[Issue] = []
+    clips = project.data.get("clip_plan 片段计划", [])
+    if not clips:
+        return [Issue("BLOCKER", "clip_plan.missing", "缺 clip_plan 片段计划，仍像旧版长片规划", "REBUILD 按4-15秒片段重建")]
+    required = ["clip_id 片段编号", "clip_type 片段类型", "duration_seconds 时长秒数", "model_duration_limit 模型时长限制", "beat_range 节拍范围", "shot_density 镜头密度", "shot_count_target 目标镜头数"]
+    for clip in clips:
+        cid = clip.get("clip_id 片段编号", "UNKNOWN")
+        for field in required:
+            if not clip.get(field):
+                items.append(Issue("WARN", "clip_plan.field_missing", f"{cid} 缺 {field}", "ADD 补充片段计划字段"))
+        clip_type = clip.get("clip_type 片段类型", "")
+        if clip_type not in VALID_CLIP_TYPES:
+            items.append(Issue("WARN", "clip_plan.unknown_type", f"{cid} 片段类型未知：{clip_type}", "REWRITE 重写片段类型"))
+        duration = safe_int(clip.get("duration_seconds 时长秒数"))
+        if duration > MAX_CLIP_SECONDS:
+            items.append(Issue("BLOCKER", "clip_plan.duration_exceeds_model_limit", f"{cid} 时长 {duration} 秒超过模型上限 {MAX_CLIP_SECONDS} 秒", "SPLIT 拆分片段"))
+        target = safe_int(clip.get("shot_count_target 目标镜头数"))
+        if clip_type.startswith("fight") and target < 10:
+            items.append(Issue("WARN", "clip_plan.fight_density_low", f"{cid} 打戏镜头密度过低：{target}镜", "EXPAND 扩展动作节点"))
+    return items
+
+
 def validate_beat_map(project: Project) -> list[Issue]:
     items: list[Issue] = []
     beats = project.data.get("beat_map 剧情节拍表", [])
-    required = ["beat_id 节拍编号", "source_quote 原文证据", "visible_action 可见动作", "dialogue 对白", "conflict 冲突", "emotion_shift 情绪变化", "power_shift 权力变化", "subtext 潜台词", "shot_hint 镜头建议"]
+    required = ["beat_id 节拍编号", "clip_id 片段编号", "clip_type 片段类型", "clip_duration_seconds 片段时长秒数", "source_quote 原文证据", "visible_action 可见动作", "dialogue 对白", "conflict 冲突", "emotion_shift 情绪变化", "power_shift 权力变化", "subtext 潜台词", "shot_hint 镜头建议", "scene_hint 场景建议", "characters 相关角色"]
     if not beats:
         return [Issue("BLOCKER", "beat_map.missing", "缺 beat_map 剧情节拍表，镜头无法基于剧情生成", "REBUILD 重新生成")]
     for beat in beats:
@@ -96,6 +122,7 @@ def validate_assets(project: Project) -> list[Issue]:
 def validate_shots(project: Project) -> list[Issue]:
     items: list[Issue] = []
     beat_ids = {b.get("beat_id 节拍编号") for b in project.data.get("beat_map 剧情节拍表", [])}
+    clip_ids = {c.get("clip_id 片段编号") for c in project.data.get("clip_plan 片段计划", [])}
     for shot in project.shots:
         sid = shot.get("shot_id 镜头编号", "UNKNOWN")
         if shot.get("camera_movement 机位运动") not in ALLOWED_CAMERA:
@@ -110,8 +137,8 @@ def validate_shots(project: Project) -> list[Issue]:
             if not shot.get(field):
                 items.append(Issue("WARN", "sound.missing", f"{sid} 缺 {field}", "ADD 补充"))
         required_shot_fields = [
-            "beat_id 节拍编号", "source_quote 原文节拍证据", "director_intent 导演意图", "this_clip_only 本段只拍", "reserved_for_later 后续保留",
-            "planned_end_state 计划结束状态", "observed_end_state 实际生成结尾状态", "retake_variable 本次返修变量",
+            "beat_id 节拍编号", "clip_id 单段编号", "clip_type 片段类型", "clip_duration_seconds 片段时长秒数", "source_quote 原文节拍证据", "director_intent 导演意图",
+            "this_clip_only 本段只拍", "reserved_for_later 后续保留", "planned_end_state 计划结束状态", "observed_end_state 实际生成结尾状态", "retake_variable 本次返修变量",
             "aspect_ratio 画幅比例", "character_symbols 人物符号", "sketch_ascii 简笔手绘图", "movement_arrow 运动箭头", "camera_arrow 镜头箭头",
             "screen_direction 画面方向", "layer_depth 前中后景", "prop_anchor 道具锚点", "source_text_ref 原文引用位置", "evidence_quote 原文证据句",
             "adaptation_note 改编说明", "invented_flag 是否AI补充", "source_confidence 原文置信度", "unknown_policy 不确定处理规则",
@@ -121,11 +148,17 @@ def validate_shots(project: Project) -> list[Issue]:
                 items.append(Issue("WARN", "director_pack.missing", f"{sid} 缺 {field}", "ADD 补充"))
         if shot.get("beat_id 节拍编号") not in beat_ids:
             items.append(Issue("WARN", "shot.beat_missing", f"{sid} 没有绑定有效 beat_id 节拍编号", "REBUILD 重新绑定节拍"))
+        if shot.get("clip_id 单段编号") not in clip_ids:
+            items.append(Issue("WARN", "shot.clip_missing", f"{sid} 没有绑定有效 clip_id 片段编号", "REBUILD 重新绑定片段"))
+        if safe_int(shot.get("clip_duration_seconds 片段时长秒数")) > MAX_CLIP_SECONDS:
+            items.append(Issue("BLOCKER", "shot.clip_duration_exceeds_model_limit", f"{sid} 所属片段超过模型时长限制", "SPLIT 拆分片段"))
         if contains_placeholder(shot):
             items.append(Issue("BLOCKER", "shot.placeholder", f"{sid} 含模板占位符，不能作为可用分镜", "REWRITE 重写具体动作"))
         purpose = shot.get("shot_purpose 镜头目的", "")
         if is_high_risk_purpose(purpose) and not shot.get("motion_grid_ascii 动作拆解六宫格"):
             items.append(Issue("WARN", "storyboard.motion_grid_missing", f"{sid} 高风险镜头缺 motion_grid_ascii 动作拆解六宫格", "ADD 补充"))
+        if shot.get("clip_type 片段类型", "").startswith("fight") and not shot.get("grid_prompt 宫格提示词") and not shot.get("motion_grid_ascii 动作拆解六宫格"):
+            items.append(Issue("WARN", "fight_clip.grid_missing", f"{sid} 打戏镜头缺宫格或动作拆解", "ADD 补充"))
         if shot.get("invented_flag 是否AI补充") == "director_bridge 导演补足":
             items.append(Issue("WARN", "source.director_bridge", f"{sid} 含导演补足内容，需要用户确认：{shot.get('adaptation_note 改编说明', '')}", "CONFIRM 人工确认"))
         items += validate_prompt_storyboard_consistency(shot, sid)
@@ -169,6 +202,13 @@ def contains_placeholder(data: dict) -> bool:
 def has_two_person_dialogue(project: Project) -> bool:
     modes = [s.get("shot_purpose 镜头目的", "") for s in project.shots]
     return any("shot_a" in x for x in modes) and any("shot_b" in x for x in modes)
+
+
+def safe_int(value: object) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def size_group(value: str) -> str:
