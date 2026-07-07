@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
 from .v02_dialogue_bind import bind_dialogue_to_characters
 from .v02_director_docs import write_director_docs
@@ -33,6 +34,7 @@ def build_project(text: str, title: str | None) -> Project:
         "dialogue_lines 对白列表": dialogues,
         **assets,
     })
+    expand_project_assets(project)
     build_preproduction(project)
     build_shots(project)
     attach_sound_and_prompts(project)
@@ -73,6 +75,7 @@ def cmd_qa(args: argparse.Namespace) -> None:
 def cmd_repair(args: argparse.Namespace) -> None:
     project_dir = Path(args.project)
     project = repair_project(load_project(project_dir), target_shot_id=args.shot)
+    expand_project_assets(project)
     build_preproduction(project)
     build_action_choreography(project)
     save_project(project, project_dir)
