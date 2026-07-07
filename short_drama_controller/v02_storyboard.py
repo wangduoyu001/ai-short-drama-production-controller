@@ -20,45 +20,32 @@ CONFLICT_WORDS = [
 TURN_WORDS = ["突然", "却", "但", "然而", "终于", "转身", "没有回头", "停下", "抬头", "拔", "握", "沉默", "冷笑"]
 POWER_WORDS = ["大人", "将军", "镖头", "掌门", "师父", "官", "王", "帝女", "少年", "少女", "众人", "跪", "押", "围"]
 SUBTEXT_WORDS = ["沉默", "低声", "冷笑", "没有回头", "看着", "盯着", "握", "停顿", "颤", "咬牙"]
+PROP_WORDS = ["刀", "剑", "枪", "弓", "碗", "酒", "门", "信", "令牌", "马", "镖", "箱", "火", "灯", "帘"]
+BANNED_PLACEHOLDERS = ["情绪或动作推进", "运动或情绪起点明确", "运动结果或情绪落点明确", "建立空间和轴线", "手部或道具特写"]
 
 
 def build_shots(project: Project) -> None:
     scene = project.scenes[0]
     char_a = project.characters[0]
     char_b = project.characters[1] if len(project.characters) > 1 else project.characters[0]
-    director_read = build_director_read(project.data.get("source_text 原文", ""), scene, char_a, char_b)
+    source_text = project.data.get("source_text 原文", "")
+    director_read = build_director_read(source_text, scene, char_a, char_b)
+    beat_map = build_beat_map(source_text, project, director_read)
+
+    project.data["beat_map 剧情节拍表"] = beat_map
     project.data["director_read 导演读本"] = director_read
     project.data["project_state_capsule 项目状态胶囊"] = build_state_capsule(project, director_read)
     project.data["producer_plan 制片执行计划"] = build_producer_plan(project)
     project.data["approval_gates 确认闸门"] = build_approval_gates()
 
-    units = force_reverse_shot_units(project.data.get("dialogue_lines 对白列表", []))
-    shots = [make_shot("SH001", "master_shot 主镜头", scene, [char_a, char_b], "建立空间和轴线", "无", "无", 1, director_read, project)]
+    shots: list[dict[str, Any]] = []
+    previous: dict[str, Any] | None = None
+    for index, beat in enumerate(beat_map[:12], start=1):
+        chars = choose_shot_characters(project, beat, index)
+        shot = make_shot(f"SH{index:03d}", beat, scene, chars, index, director_read, project, previous)
+        shots.append(shot)
+        previous = shot
 
-    for unit in units[:5]:
-        speaker = char_a if unit["speaker_name 说话人"] in [char_a["character_name 角色名"], "主角"] else char_b
-        purpose = "shot_a A正打" if speaker == char_a else "shot_b B反打"
-        shots.append(make_shot(
-            f"SH{len(shots)+1:03d}", purpose, scene, [speaker],
-            f"{speaker['character_name 角色名']}发声或保持闭口",
-            unit["dialogue_line 出口对白"], unit["os_line 画外音"], len(shots)+1, director_read, project,
-        ))
-        if len(shots) == 4:
-            shots.append(make_shot("SH005", "insert_shot 插入镜头", scene, [char_a], "手部或道具特写", "无", "无", 5, director_read, project))
-
-    while len(shots) < 8:
-        if len(shots) == 6:
-            purpose = "movement_result 运动结果"
-            chars = [char_a, char_b]
-        elif len(shots) < 7:
-            purpose = "reaction_shot 反应镜头"
-            chars = [char_b]
-        else:
-            purpose = "hook_shot 结尾钩子"
-            chars = [char_a]
-        shots.append(make_shot(f"SH{len(shots)+1:03d}", purpose, scene, chars, "情绪或动作推进", "无", "无", len(shots)+1, director_read, project))
-
-    shots = shots[:12]
     project.data["blocking_plan 人物调度计划"] = {
         "axis_line 轴线": "CHAR_A与CHAR_B连线",
         "safe_camera_zone 安全机位区": "摄影机保持在轴线同侧",
@@ -69,6 +56,161 @@ def build_shots(project: Project) -> None:
     project.data["storyboard_layout 分镜总览布局"] = choose_storyboard_layout(len(shots))
     project.data["storyboard_grid_ascii 分镜总览简笔图"] = build_storyboard_grid_ascii(shots)
     project.data["dialogue_coverage_ascii 对白覆盖图"] = build_dialogue_coverage_ascii(shots)
+
+
+def build_beat_map(text: str, project: Project, director_read: dict[str, str]) -> list[dict[str, str]]:
+    units = split_source_units(text)
+    if not units:
+        units = ["原文为空：需要用户补充故事原文"]
+    beats = [build_beat(unit, project, index) for index, unit in enumerate(units, start=1)]
+    return expand_coverage_beats(beats, project, director_read)
+
+
+def build_beat(unit: str, project: Project, index: int) -> dict[str, str]:
+    dialogue = first_dialogue(unit)
+    conflict = "、".join(find_terms(unit, CONFLICT_WORDS)) or "关系压力较低，需要用表演细节承载"
+    turn = "、".join(find_terms(unit, TURN_WORDS)) or "状态推进"
+    power = infer_beat_power(unit, project)
+    subtext = infer_beat_subtext(unit, dialogue)
+    visible_action = extract_visible_action(unit, dialogue)
+    shot_hint = choose_shot_hint(index, unit, dialogue, visible_action)
+    return {
+        "beat_id 节拍编号": f"B{index:03d}",
+        "source_quote 原文证据": unit[:180],
+        "visible_action 可见动作": visible_action,
+        "dialogue 对白": dialogue or "无",
+        "conflict 冲突": conflict,
+        "emotion_shift 情绪变化": infer_emotion_shift(unit, conflict, turn),
+        "power_shift 权力变化": power,
+        "subtext 潜台词": subtext,
+        "shot_hint 镜头建议": shot_hint,
+        "coverage_role 覆盖功能": "source 源节拍",
+    }
+
+
+def expand_coverage_beats(beats: list[dict[str, str]], project: Project, director_read: dict[str, str]) -> list[dict[str, str]]:
+    target = choose_target_shot_count(beats)
+    expanded = list(beats)
+    source = beats[-1] if beats else build_beat("原文为空：需要用户补充故事原文", project, 1)
+    while len(expanded) < target:
+        base = beats[(len(expanded) - len(beats)) % len(beats)] if beats else source
+        expanded.append(make_coverage_beat(base, len(expanded) + 1, project, director_read))
+    return expanded[:target]
+
+
+def choose_target_shot_count(beats: list[dict[str, str]]) -> int:
+    if len(beats) <= 2:
+        return 6
+    if len(beats) <= 5:
+        return 8
+    return min(12, max(8, len(beats)))
+
+
+def make_coverage_beat(base: dict[str, str], index: int, project: Project, director_read: dict[str, str]) -> dict[str, str]:
+    role_cycle = ["reaction 反应", "insert 插入", "movement_result 动作结果", "hook 钩子"]
+    role = role_cycle[(index - 1) % len(role_cycle)]
+    visible = base.get("visible_action 可见动作", "角色保持原文动作后的姿态")
+    focus = project.characters[0].get("character_name 角色名", "主角") if project.characters else "主角"
+    if role.startswith("reaction"):
+        action = f"{focus}听完上一句后停顿半秒，视线没有离开对方，呼吸压低"
+        hint = "reaction_shot 反应镜头"
+    elif role.startswith("insert"):
+        prop = first_prop_name(project) or "关键道具"
+        action = f"{prop}在画面前景停住，角色手指收紧，承接原文动作：{visible}"
+        hint = "insert_shot 插入镜头"
+    elif role.startswith("movement_result"):
+        action = f"动作结果落在角色站位变化上：{visible}之后，双方距离被重新拉开"
+        hint = "movement_result 运动结果"
+    else:
+        action = f"镜头停在{focus}未说出口的反应上，为下一段保留悬念"
+        hint = "hook_shot 结尾钩子"
+    return {
+        **base,
+        "beat_id 节拍编号": f"B{index:03d}",
+        "visible_action 可见动作": action,
+        "dialogue 对白": "无",
+        "emotion_shift 情绪变化": director_read.get("scene_turn 场景转折", base.get("emotion_shift 情绪变化", "情绪压力延续")),
+        "subtext 潜台词": director_read.get("subtext 潜台词", base.get("subtext 潜台词", "动作背后保留未说破的态度")),
+        "shot_hint 镜头建议": hint,
+        "coverage_role 覆盖功能": role,
+    }
+
+
+def first_dialogue(text: str) -> str:
+    samples = extract_dialogue_samples(text)
+    return samples[0] if samples else ""
+
+
+def extract_visible_action(unit: str, dialogue: str) -> str:
+    stripped = unit.strip()
+    without_dialogue = stripped.replace(dialogue, "") if dialogue else stripped
+    candidates = split_action_phrases(without_dialogue)
+    for candidate in candidates:
+        if has_action_signal(candidate):
+            return candidate[:80]
+    if dialogue:
+        return f"说话人说出“{dialogue[:24]}”前后，视线停在对方身上，手部动作保持可见"
+    return f"画面呈现原文状态：{stripped[:60]}"
+
+
+def split_action_phrases(text: str) -> list[str]:
+    parts = re.split(r"[，,。！？!?；;、]", text)
+    return [p.strip(" ：:”“\" ") for p in parts if p.strip(" ：:”“\" ")]
+
+
+def has_action_signal(text: str) -> bool:
+    return any(word in text for word in TURN_WORDS + CONFLICT_WORDS + SUBTEXT_WORDS + PROP_WORDS)
+
+
+def infer_beat_power(unit: str, project: Project) -> str:
+    hits = find_terms(unit, POWER_WORDS)
+    char_a = project.characters[0].get("character_name 角色名", "主角") if project.characters else "主角"
+    char_b = project.characters[1].get("character_name 角色名", "对手") if len(project.characters) > 1 else "对手"
+    if hits:
+        return f"权力依据：{','.join(hits[:3])}；{char_a}与{char_b}的强弱关系在本节拍发生可见变化"
+    if find_terms(unit, CONFLICT_WORDS):
+        return f"施压者暂时占上风，{char_a}通过反应动作争回主动"
+    return f"{char_a}与{char_b}保持试探关系，权力未完全揭开"
+
+
+def infer_beat_subtext(unit: str, dialogue: str) -> str:
+    hits = find_terms(unit, SUBTEXT_WORDS)
+    if hits:
+        return f"潜台词来自{','.join(hits[:3])}，真实态度藏在停顿、视线和手部动作里"
+    if dialogue:
+        return "对白表面传递信息，镜头重点放在说话前后的迟疑、压迫或底气"
+    return "没有明确对白时，潜台词由身体姿态、环境声和停顿承担"
+
+
+def infer_emotion_shift(unit: str, conflict: str, turn: str) -> str:
+    if turn != "状态推进":
+        return f"从压住情绪转向可见反应，触发词：{turn}"
+    if conflict.startswith("关系压力较低"):
+        return "从观察状态转为轻微警觉，情绪变化保持克制"
+    return f"从被动承受转为准备反击，冲突依据：{conflict}"
+
+
+def choose_shot_hint(index: int, unit: str, dialogue: str, visible_action: str) -> str:
+    if index == 1:
+        return "master_shot 主镜头"
+    if dialogue:
+        return "shot_a A正打" if index % 2 == 0 else "shot_b B反打"
+    if any(word in visible_action for word in PROP_WORDS):
+        return "insert_shot 插入镜头"
+    if find_terms(unit, CONFLICT_WORDS + TURN_WORDS):
+        return "movement_result 运动结果"
+    return "reaction_shot 反应镜头"
+
+
+def choose_shot_characters(project: Project, beat: dict[str, str], index: int) -> list[dict[str, Any]]:
+    if not project.characters:
+        return [{"character_id 角色编号": "CHAR_A", "character_name 角色名": "主角", "spatial_anchor 空间锚点": "画面左侧", "clothing_lock 服装锁定": "固定服装"}]
+    hint = beat.get("shot_hint 镜头建议", "")
+    if "master" in hint or "movement" in hint:
+        return project.characters[:2] if len(project.characters) > 1 else [project.characters[0]]
+    if "shot_b" in hint and len(project.characters) > 1:
+        return [project.characters[1]]
+    return [project.characters[0]]
 
 
 def build_director_read(text: str, scene: dict[str, Any], char_a: dict[str, Any], char_b: dict[str, Any]) -> dict[str, str]:
@@ -84,13 +226,11 @@ def build_director_read(text: str, scene: dict[str, Any], char_a: dict[str, Any]
     turn_sentence = find_best_sentence(units, turn_hits or TURN_WORDS)
     power_sentence = find_best_sentence(units, power_hits or POWER_WORDS)
     subtext_sentence = find_best_sentence(units, subtext_hits or SUBTEXT_WORDS)
-
     scene_function = infer_scene_function(conflict_hits, dialogue_samples, units)
     scene_turn = infer_scene_turn(turn_hits, conflict_hits, char_a_name)
     power_shift = infer_power_shift(power_hits, conflict_hits, char_a_name, char_b_name)
     subtext = infer_subtext(subtext_hits, dialogue_samples, char_a_name)
     director_intent = infer_director_intent(scene_function, scene_turn, subtext)
-
     return {
         "source_basis 原文依据": join_evidence(units[:3]),
         "conflict_terms 冲突词": "、".join(conflict_hits) if conflict_hits else "未发现强冲突词，按低强度关系压力处理",
@@ -215,9 +355,9 @@ def build_state_capsule(project: Project, director_read: dict[str, str]) -> dict
 
 def build_producer_plan(project: Project) -> dict[str, Any]:
     return {
-        "production_scope 制作范围": "60-90秒，8-12镜，2-3个主要角色，1个主场景，先跑通样片流程",
+        "production_scope 制作范围": "默认按原文密度生成6-12镜；原文薄时不强撑60-90秒",
         "episode_goal 本集目标": "把原文拆成可生成视频的导演物料包，不直接交付成片",
-        "duration_plan 时长计划": "每镜约4-8秒，复杂动作拆成插入镜头或宫格硬切",
+        "duration_plan 时长计划": "每镜约4-8秒；对白少时压缩时长，避免空镜头水时长",
         "clip_plan 分段计划": "默认先做CLIP01；下一段必须基于用户确认的实际结尾继续",
         "asset_checklist 素材清单": ["角色三视图或脸部参考", "主场景概念图", "关键道具图", "首帧图或上一段末帧"],
         "platform_plan 平台生成计划": "先输出通用提示词，再按即梦、可灵、LibTV、ComfyUI等平台适配",
@@ -238,19 +378,22 @@ def build_approval_gates() -> dict[str, str]:
     }
 
 
-def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dict[str, Any]], action: str, dialogue: str, os_line: str, index: int, director_read: dict[str, str], project: Project) -> dict[str, Any]:
-    camera = "slow_push_in 缓慢推进" if "shot_" in purpose else "slight_lateral_move 轻微横移" if "movement" in purpose else "fixed_camera 固定机位"
-    if camera not in ALLOWED_CAMERA:
-        camera = "fixed_camera 固定机位"
-    speaker_mode = "spoken_dialogue 出口对白" if dialogue != "无" else "os_voice OS画外音" if os_line != "无" else "none 无"
-    shot_sizes = ["全景 WS", "近景 CU", "近景 CU", "特写 ECU", "中近景 MCU", "近景 CU", "中景 MS", "中近景 MCU"]
+def make_shot(shot_id: str, beat: dict[str, str], scene: dict[str, Any], chars: list[dict[str, Any]], index: int, director_read: dict[str, str], project: Project, previous_shot: dict[str, Any] | None = None) -> dict[str, Any]:
+    purpose = beat.get("shot_hint 镜头建议", "reaction_shot 反应镜头")
+    camera = choose_camera(purpose)
+    shot_size = choose_shot_size(index, purpose, previous_shot)
+    dialogue = beat.get("dialogue 对白", "无")
+    speaker_mode = "spoken_dialogue 出口对白" if dialogue != "无" else "none 无"
+    focus = chars[0]
     aspect = "16:9 横屏"
-    evidence = build_source_evidence(project.data.get("source_text 原文", ""), index, action, dialogue, os_line)
-    motion_grid = build_motion_grid_ascii(purpose) if is_high_risk_purpose(purpose) else ""
-    entry_pose = "运动或情绪起点明确"
-    exit_pose = "运动结果或情绪落点明确"
-    return {
+    visible_action = clean_action(beat.get("visible_action 可见动作", ""), beat)
+    motion_arrow = build_movement_arrow_from_beat(beat, purpose)
+    entry_pose = build_entry_pose(beat, previous_shot)
+    exit_pose = build_exit_pose(beat)
+    evidence = build_source_evidence(project.data.get("source_text 原文", ""), index, visible_action, dialogue, "无", beat)
+    shot: dict[str, Any] = {
         "shot_id 镜头编号": shot_id,
+        "beat_id 节拍编号": beat.get("beat_id 节拍编号", f"B{index:03d}"),
         "clip_id 单段编号": "CLIP01",
         "shot_purpose 镜头目的": purpose,
         "scene_id 场景编号": scene["scene_id 场景编号"],
@@ -261,39 +404,39 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "invented_flag 是否AI补充": evidence["invented_flag 是否AI补充"],
         "source_confidence 原文置信度": evidence["source_confidence 原文置信度"],
         "unknown_policy 不确定处理规则": "不确定内容必须标注为导演补足，禁止伪装成原文事实",
+        "source_quote 原文节拍证据": beat.get("source_quote 原文证据", ""),
         "scene_function 场景功能": director_read["scene_function 场景功能"],
-        "scene_turn 场景转折": director_read["scene_turn 场景转折"],
+        "scene_turn 场景转折": beat.get("emotion_shift 情绪变化", director_read["scene_turn 场景转折"]),
         "pov_empathy 观众视角与共情位置": director_read["pov_empathy 观众视角与共情位置"],
-        "power_shift 权力变化": director_read["power_shift 权力变化"],
-        "subtext 潜台词": director_read["subtext 潜台词"],
+        "power_shift 权力变化": beat.get("power_shift 权力变化", director_read["power_shift 权力变化"]),
+        "subtext 潜台词": beat.get("subtext 潜台词", director_read["subtext 潜台词"]),
         "director_intent 导演意图": director_read["director_intent 导演意图"],
-        "felt_intent 观众感受目标": "观众能明确感到本镜头推进了压力、选择或立场变化",
-        "on_screen_characters 在场人物": [c["character_id 角色编号"] for c in chars],
-        "focus_character 画面主体": chars[0]["character_id 角色编号"],
+        "felt_intent 观众感受目标": beat.get("emotion_shift 情绪变化", "观众能看懂本镜头的态度变化"),
+        "on_screen_characters 在场人物": [c.get("character_id 角色编号", "CHAR_A") for c in chars],
+        "focus_character 画面主体": focus.get("character_id 角色编号", "CHAR_A"),
         "speaker_mode 发声模式": speaker_mode,
-        "speaker_spatial_anchor 说话人空间锚点": chars[0]["spatial_anchor 空间锚点"] + "，" + chars[0]["clothing_lock 服装锁定"],
+        "speaker_spatial_anchor 说话人空间锚点": focus.get("spatial_anchor 空间锚点", "画面左侧") + "，" + focus.get("clothing_lock 服装锁定", "固定服装"),
         "mouth_state 嘴型状态": "speaker_open 说话人开口" if dialogue != "无" else "all_closed 全员闭口",
         "dialogue_line 出口对白": dialogue,
-        "os_line 画外音": os_line,
+        "os_line 画外音": "无",
         "aspect_ratio 画幅比例": aspect,
         "character_symbols 人物符号": "A○=主角，B○=对手，P1=关键道具，▣=摄影机",
-        "shot_size 景别": shot_sizes[min(index - 1, len(shot_sizes) - 1)],
-        "camera_angle 机位角度": "轴线同侧，侧前方约30度",
+        "shot_size 景别": shot_size,
+        "camera_angle 机位角度": choose_camera_angle(purpose),
         "camera_movement 机位运动": camera,
         "camera_axis 轴线方向": "A-B连线，摄影机在同侧",
-        "screen_direction 画面方向": "A在画面左侧，B在画面右侧；A视线->，B视线<-；保持同侧轴线，不跳轴",
+        "screen_direction 画面方向": choose_screen_direction(chars, purpose),
         "layer_depth 前中后景": build_layer_depth(scene),
-        "prop_anchor 道具锚点": build_prop_anchor(project, chars[0], action),
-        "sketch_ascii 简笔手绘图": build_sketch(purpose, aspect),
-        "movement_arrow 运动箭头": build_movement_arrow(purpose),
+        "prop_anchor 道具锚点": build_prop_anchor(project, focus, visible_action),
+        "movement_arrow 运动箭头": motion_arrow,
         "camera_arrow 镜头箭头": build_camera_arrow(camera),
-        "motion_grid_ascii 动作拆解六宫格": motion_grid,
-        "motion_path 运动轨迹": "无大位移；如有运动，只保留起势、特写、结果",
+        "motion_grid_ascii 动作拆解六宫格": "",
+        "motion_path 运动轨迹": motion_arrow,
         "entry_pose 起始姿态": entry_pose,
         "exit_pose 结束姿态": exit_pose,
-        "action_detail 动作细节": action,
-        "performance_action 表演动作": f"用一个可见动作承载潜台词：{action}",
-        "this_clip_only 本段只拍": action,
+        "action_detail 动作细节": visible_action,
+        "performance_action 表演动作": visible_action,
+        "this_clip_only 本段只拍": visible_action,
         "reserved_for_later 后续保留": "后续反转、升级冲突或新场景，不在本镜提前完成",
         "planned_start_state 计划起始状态": entry_pose,
         "planned_end_state 计划结束状态": exit_pose,
@@ -301,11 +444,101 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "continuity_locks 连续性锁定": "同脸、同发型、同服装、同道具、同站位逻辑",
         "allowed_changes 允许变化": "只允许表情、手部小动作、光线轻微变化",
         "retake_variable 本次返修变量": "none 未返修；返修时一次只改一个变量",
-        "fallback_shot 备用镜头": "改为侧脸、背影、手部、道具或反应镜头",
+        "fallback_shot 备用镜头": build_fallback_shot(beat, purpose),
     }
+    shot["sketch_ascii 简笔手绘图"] = build_sketch(shot)
+    if is_high_risk_shot(shot):
+        shot["motion_grid_ascii 动作拆解六宫格"] = build_motion_grid_ascii(shot)
+    return shot
 
 
-def build_source_evidence(text: str, index: int, action: str, dialogue: str, os_line: str) -> dict[str, str]:
+def clean_action(action: str, beat: dict[str, str]) -> str:
+    value = action.strip()
+    if not value or any(bad in value for bad in BANNED_PLACEHOLDERS):
+        value = beat.get("source_quote 原文证据", "").strip()[:70]
+    if not value:
+        value = "角色在画面中保持可见姿态，等待用户补充原文动作"
+    return value
+
+
+def choose_camera(purpose: str) -> str:
+    if "shot_" in purpose:
+        return "slow_push_in 缓慢推进"
+    if "movement" in purpose or "insert" in purpose:
+        return "slight_lateral_move 轻微横移"
+    return "fixed_camera 固定机位"
+
+
+def choose_shot_size(index: int, purpose: str, previous_shot: dict[str, Any] | None) -> str:
+    preferred = "全景 WS" if "master" in purpose else "特写 ECU" if "insert" in purpose else "中景 MS" if "movement" in purpose else "近景 CU" if "shot_" in purpose else "中近景 MCU"
+    if previous_shot and size_group(previous_shot.get("shot_size 景别", "")) == size_group(preferred):
+        alternates = ["全景 WS", "中景 MS", "中近景 MCU", "近景 CU", "特写 ECU"]
+        for alt in alternates:
+            if size_group(alt) != size_group(preferred) and size_group(alt) != size_group(previous_shot.get("shot_size 景别", "")):
+                return alt
+    return preferred
+
+
+def size_group(value: str) -> str:
+    if "全景" in value or "WS" in value:
+        return "wide"
+    if "中景" in value or "MS" in value:
+        return "medium"
+    if "近景" in value or "CU" in value:
+        return "close"
+    if "特写" in value or "ECU" in value:
+        return "detail"
+    return value
+
+
+def choose_camera_angle(purpose: str) -> str:
+    if "shot_a" in purpose or "shot_b" in purpose:
+        return "轴线同侧，侧前方约30度"
+    if "insert" in purpose:
+        return "固定特写，略低角度贴近手部或道具"
+    if "movement" in purpose:
+        return "轴线同侧，斜45度保留动作方向"
+    return "轴线同侧，正侧之间保留空间关系"
+
+
+def choose_screen_direction(chars: list[dict[str, Any]], purpose: str) -> str:
+    if "shot_b" in purpose:
+        return "B在画面右侧或中右，视线<-；A保持画外左侧方向，不跳轴"
+    if "insert" in purpose:
+        return "道具或手部位于画面中部，动作方向沿上一镜视线轴线延续"
+    return "A在画面左侧，B在画面右侧；A视线->，B视线<-；保持同侧轴线，不跳轴"
+
+
+def build_movement_arrow_from_beat(beat: dict[str, str], purpose: str) -> str:
+    action = beat.get("visible_action 可见动作", "")
+    if "movement" in purpose:
+        return f"起点：A左侧或中景位置 -> 结果：动作后停在画面中部；依据动作：{action[:50]}"
+    if "insert" in purpose:
+        return f"局部动作：手部/道具静止 -> 收紧或触碰 -> 停顿；依据动作：{action[:50]}"
+    if "shot_b" in purpose:
+        return "无大位移；B的视线从画面右侧压回左侧"
+    return "无大位移；角色通过视线、手部和呼吸完成态度变化"
+
+
+def build_entry_pose(beat: dict[str, str], previous_shot: dict[str, Any] | None) -> str:
+    if previous_shot:
+        return f"承接上一镜结果：{previous_shot.get('planned_end_state 计划结束状态', '')[:60]}"
+    return f"以原文节拍开场：{beat.get('source_quote 原文证据', '')[:60]}"
+
+
+def build_exit_pose(beat: dict[str, str]) -> str:
+    return f"停在本节拍变化后：{beat.get('emotion_shift 情绪变化', '')[:70]}"
+
+
+def build_fallback_shot(beat: dict[str, str], purpose: str) -> str:
+    if "shot_" in purpose:
+        return "改为过肩近景，保留说话人嘴型和对方画外方向"
+    if "insert" in purpose:
+        return "改为手部或道具静态特写，减少复杂接触"
+    return f"改为反应镜头，保留原文证据：{beat.get('source_quote 原文证据', '')[:50]}"
+
+
+def build_source_evidence(text: str, index: int, action: str, dialogue: str, os_line: str, beat: dict[str, str] | None = None) -> dict[str, str]:
     clean = " ".join(text.split())
     target = dialogue if dialogue != "无" else os_line if os_line != "无" else ""
     if target and target in clean:
@@ -318,6 +551,16 @@ def build_source_evidence(text: str, index: int, action: str, dialogue: str, os_
             "adaptation_note 改编说明": "对白或旁白来自原文，镜头调度为导演拆解",
             "invented_flag 是否AI补充": "source_supported 原文支持",
             "source_confidence 原文置信度": "high 高",
+        }
+    if beat and beat.get("source_quote 原文证据"):
+        quote = beat["source_quote 原文证据"]
+        flag = "source_supported 原文支持" if action and action[:12] in quote else "director_bridge 导演补足"
+        return {
+            "source_text_ref 原文引用位置": beat.get("beat_id 节拍编号", f"approx_shot:{index}"),
+            "evidence_quote 原文证据句": quote[:140],
+            "adaptation_note 改编说明": "镜头动作基于该节拍可拍化处理" if flag.startswith("source") else f"{action} 为导演调度补足，需用户确认是否符合原文",
+            "invented_flag 是否AI补充": flag,
+            "source_confidence 原文置信度": "medium 中",
         }
     quote = clean[:120] if clean else "无原文"
     return {
@@ -347,7 +590,7 @@ def build_storyboard_grid_ascii(shots: list[dict[str, Any]]) -> str:
     for row in range(rows):
         lines.append(border)
         chunk = shots[row * cols:(row + 1) * cols]
-        for field in ["shot_id 镜头编号", "shot_purpose 镜头目的", "screen_direction 画面方向"]:
+        for field in ["shot_id 镜头编号", "beat_id 节拍编号", "shot_purpose 镜头目的"]:
             cells = []
             for shot in chunk:
                 text = shorten(str(shot.get(field, "")), cell_w - 2)
@@ -363,7 +606,7 @@ def build_dialogue_coverage_ascii(shots: list[dict[str, Any]]) -> str:
     has_a = any("shot_a" in s.get("shot_purpose 镜头目的", "") for s in shots)
     has_b = any("shot_b" in s.get("shot_purpose 镜头目的", "") for s in shots)
     if not (has_a and has_b):
-        return "无双人正反打对白，不生成 dialogue_coverage_ascii 对白覆盖图。"
+        return "双人正反打不足：按当前原文对白密度处理，需人工确认是否增加对白覆盖。"
     return """+------------------+------------------+------------------+
 | MASTER 主镜头     | A 正打 shot_a     | B 反打 shot_b     |
 | A○      ○B        | A○ -> B闭口       | A闭口 <- ○B       |
@@ -371,81 +614,49 @@ def build_dialogue_coverage_ascii(shots: list[dict[str, Any]]) -> str:
 +------------------+------------------+------------------+"""
 
 
-def build_sketch(purpose: str, aspect_ratio: str) -> str:
-    if "master" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
+def build_sketch(shot_or_purpose: Any, aspect_ratio: str | None = None) -> str:
+    if not isinstance(shot_or_purpose, dict):
+        pseudo = {
+            "aspect_ratio 画幅比例": aspect_ratio or "16:9 横屏",
+            "shot_size 景别": "中景 MS",
+            "screen_direction 画面方向": "A在画面左侧，B在画面右侧；A视线->，B视线<-；保持同侧轴线，不跳轴",
+            "movement_arrow 运动箭头": "无大位移；角色通过视线和手部动作完成态度变化",
+            "camera_arrow 镜头箭头": "camera 摄影机：▣ 固定不动",
+            "layer_depth 前中后景": "FG前景：遮挡；MG中景：角色；BG背景：主场景",
+            "prop_anchor 道具锚点": "P1关键道具保持在角色身上或场景固定位置",
+        }
+        return build_sketch(pseudo)
+    shot = shot_or_purpose
+    return f"""frame / 画框：{shot.get('aspect_ratio 画幅比例', '16:9 横屏')}；shot_size / 景别：{shot.get('shot_size 景别', '')}
 +--------------------------------------+
-| FG 前景：门框/阴影                   |
+| FG 前景：{extract_depth_part(shot.get('layer_depth 前中后景', ''), 'FG')} |
 |                                      |
-| MG 中景：A○ 左三分之一      ○B 右侧 |
-|          A视线 ->        <- B视线    |
+| MG 中景：{build_character_line(shot)} |
+| 方向：{shorten(shot.get('screen_direction 画面方向', ''), 30)} |
+| 动作：{shorten(shot.get('movement_arrow 运动箭头', ''), 30)} |
 |                                      |
-| BG 背景：主场景固定物件              |
-| camera 摄影机：▣ 轴线同侧固定        |
+| BG 背景：{extract_depth_part(shot.get('layer_depth 前中后景', ''), 'BG')} |
+| {shorten(shot.get('camera_arrow 镜头箭头', ''), 36)} |
+| prop / 道具：{shorten(shot.get('prop_anchor 道具锚点', ''), 26)} |
 +--------------------------------------+"""
-    if "shot_a" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：B的肩或环境边缘可虚化       |
-|                                      |
-| MG 中景：A○ 近景占画面左/中         |
-|          A视线 -> 画面右             |
-|                                      |
-| BG 背景：保持同一主场景              |
-| camera 摄影机：▣ 侧前方30度          |
-+--------------------------------------+"""
-    if "shot_b" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：A的肩或环境边缘可虚化       |
-|                                      |
-| MG 中景：              ○B 近景右/中 |
-|               画面左 <- B视线        |
-|                                      |
-| BG 背景：保持同一主场景              |
-| camera 摄影机：▣ 侧前方30度          |
-+--------------------------------------+"""
-    if "insert" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：手部/道具占画面主体         |
-|                                      |
-| MG 中景：P1 道具 ○--- -> 触碰/握紧   |
-|                                      |
-| BG 背景：虚化，不换场景              |
-| camera 摄影机：▣ 固定特写            |
-+--------------------------------------+"""
-    if "movement" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：保留空间参照物              |
-|                                      |
-| MG 中景：A○ 起点 -----> 结果位   ○B |
-|          动作方向保持左 -> 右         |
-|                                      |
-| BG 背景：固定，不旋转空间            |
-| camera 摄影机：▣ 轻微横移跟随        |
-+--------------------------------------+"""
-    if "reaction" in purpose:
-        return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：画外事件方向留空            |
-|                                      |
-| MG 中景：              ○B 反应近景  |
-|               画面左 <- B视线        |
-|                                      |
-| BG 背景：主场景固定物件              |
-| camera 摄影机：▣ 固定机位            |
-+--------------------------------------+"""
-    return f"""frame / 画框：{aspect_ratio}
-+--------------------------------------+
-| FG 前景：环境边缘/遮挡物             |
-|                                      |
-| MG 中景：A○ 前景/中景 -> 下一镜方向  |
-|                                      |
-| BG 背景：保留主场景识别物            |
-| camera 摄影机：▣ 固定机位            |
-+--------------------------------------+"""
+
+
+def build_character_line(shot: dict[str, Any]) -> str:
+    chars = shot.get("on_screen_characters 在场人物", [])
+    if len(chars) >= 2:
+        return "A○ 左侧        ○B 右侧"
+    if shot.get("focus_character 画面主体", "") == "CHAR_B":
+        return "             ○B 右/中"
+    return "A○ 左/中"
+
+
+def extract_depth_part(text: str, marker: str) -> str:
+    if not text:
+        return "固定空间参照"
+    for part in text.split("；"):
+        if part.startswith(marker):
+            return part.split("：", 1)[-1][:14]
+    return text[:14]
 
 
 def build_layer_depth(scene: dict[str, Any]) -> str:
@@ -454,40 +665,58 @@ def build_layer_depth(scene: dict[str, Any]) -> str:
 
 
 def build_prop_anchor(project: Project, focus_character: dict[str, Any], action: str) -> str:
-    prop_names = [p.get("prop_name 道具名", "") for p in project.props if p.get("prop_name 道具名")]
-    prop = prop_names[0] if prop_names else "P1关键道具"
+    prop = first_prop_name(project) or "P1关键道具"
     owner = focus_character.get("character_name 角色名", "画面主体")
-    if any(word in action for word in ["手", "道具", "刀", "剑", "握"]):
-        return f"{prop}：由{owner}持有，位于画面主体手部区域，可小幅移动，不可消失"
+    if any(word in action for word in PROP_WORDS + ["手", "握"]):
+        return f"{prop}：由{owner}持有或贴近手部区域，可小幅移动，不可消失"
     return f"{prop}：保持在场景固定位置或角色身上，不抢主体，不突然消失"
 
 
+def first_prop_name(project: Project) -> str:
+    for prop in project.props:
+        name = prop.get("prop_name 道具名", "")
+        if name:
+            return name
+    return ""
+
+
 def is_high_risk_purpose(purpose: str) -> bool:
-    return any(word in purpose for word in ["movement", "insert", "运动", "result"])
+    return any(word in purpose for word in ["movement", "insert", "运动", "result", "动作", "道具"])
 
 
-def build_motion_grid_ascii(purpose: str) -> str:
-    if not is_high_risk_purpose(purpose):
-        return ""
-    return """+------------+------------+------------+
-| 1 起势      | 2 接近      | 3 接触      |
-| A○ 准备 ->  | A○ ---> B   | A/P1 -> B   |
-| ▣ 固定      | ▣ 轻横移    | ▣ 特写      |
+def is_high_risk_shot(shot: dict[str, Any]) -> bool:
+    purpose = shot.get("shot_purpose 镜头目的", "")
+    action = shot.get("action_detail 动作细节", "")
+    return is_high_risk_purpose(purpose) or any(word in action for word in CONFLICT_WORDS + PROP_WORDS)
+
+
+def build_motion_grid_ascii(purpose_or_shot: Any) -> str:
+    if isinstance(purpose_or_shot, dict):
+        action = purpose_or_shot.get("action_detail 动作细节", "本镜动作")
+    else:
+        action = str(purpose_or_shot)
+    return f"""+------------+------------+------------+
+| 1 起势      | 2 接近      | 3 接触/停顿  |
+| A○ 准备     | A○ ---> 目标 | 动作核心     |
+| {shorten(action, 8):<8} | 保持轴线     | 道具不消失   |
 +------------+------------+------------+
 | 4 结果      | 5 反应      | 6 收束      |
-| B <- 后退   | B○ 停顿     | A○ 静止     |
+| 位置变化     | 对方停顿     | A○ 保持     |
 | ▣ 中景      | ▣ 近景      | ▣ 固定      |
 +------------+------------+------------+"""
 
 
-def build_movement_arrow(purpose: str) -> str:
+def build_movement_arrow(purpose_or_beat: Any) -> str:
+    if isinstance(purpose_or_beat, dict):
+        return build_movement_arrow_from_beat(purpose_or_beat, purpose_or_beat.get("shot_hint 镜头建议", ""))
+    purpose = str(purpose_or_beat)
     if "movement" in purpose:
-        return "A左侧起点 -> 画面中部结果位；只保留动作结果，不做复杂连续打斗"
+        return "起点：A左侧或中景位置 -> 结果：动作后停在画面中部"
     if "insert" in purpose:
-        return "手部/道具：静止 -> 轻触/握紧 -> 停顿"
+        return "局部动作：手部/道具静止 -> 收紧或触碰 -> 停顿"
     if "shot_b" in purpose:
-        return "无大位移；视线方向：B -> 画面左侧"
-    return "无大位移；视线方向：A -> 画面右侧；人物大位置不变"
+        return "无大位移；B的视线从画面右侧压回左侧"
+    return "无大位移；角色通过视线、手部和呼吸完成态度变化"
 
 
 def build_camera_arrow(camera: str) -> str:
