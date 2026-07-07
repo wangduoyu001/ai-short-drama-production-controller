@@ -14,6 +14,7 @@ from .v02_preproduction import build_action_choreography, build_preproduction
 from .v02_prompts import attach_sound_and_prompts
 from .v02_quality import summary, validate
 from .v02_repair import repair_project
+from .v02_shot_inference import attach_shot_inference
 from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
 from .v02_cli import render_assets, render_producer, render_prompts, render_qa, render_script, render_sound, render_storyboard
@@ -40,6 +41,7 @@ def build_project(text: str, title: str | None) -> Project:
     build_preproduction(project)
     build_shots(project)
     attach_sound_and_prompts(project)
+    attach_shot_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
     return project
@@ -80,6 +82,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     project = repair_project(load_project(project_dir), target_shot_id=args.shot)
     expand_project_assets(project)
     build_preproduction(project)
+    attach_shot_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
     save_project(project, project_dir)
@@ -114,10 +117,14 @@ def render_single_prompt(shot: dict) -> str:
         f"clip_duration_seconds 片段时长秒数：{shot.get('clip_duration_seconds 片段时长秒数', '')}",
         f"beat_id 节拍编号：{shot.get('beat_id 节拍编号', '')}",
         f"source_quote 原文节拍证据：{shot.get('source_quote 原文节拍证据', '')}",
+        "\nfirst_frame_prompt 首帧提示词：",
+        shot.get("first_frame_prompt 首帧提示词", ""),
         "\nimage_prompt 图片提示词：",
         shot.get("image_prompt 图片提示词", ""),
         "\nvideo_prompt 视频提示词：",
         shot.get("video_prompt 视频提示词", ""),
+        "\nend_frame_prompt 尾帧提示词：",
+        shot.get("end_frame_prompt 尾帧提示词", ""),
         "\nsound_prompt 声音提示词：",
         f"发声模式：{shot.get('speaker_mode 发声模式', '')}；嘴型状态：{shot.get('mouth_state 嘴型状态', '')}；环境底音：{shot.get('ambience_sfx 环境底音', '')}；拟音：{shot.get('foley_sfx 拟音', '')}；音乐：{shot.get('music_note 音乐建议', '')}",
         "\nnegative_prompt 负面提示词：",
