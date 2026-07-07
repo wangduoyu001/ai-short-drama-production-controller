@@ -21,6 +21,7 @@ def build_shots(project: Project) -> None:
     project.data["director_read 导演读本"] = director_read
     project.data["project_state_capsule 项目状态胶囊"] = build_state_capsule(project, director_read)
     project.data["producer_plan 制片执行计划"] = build_producer_plan(project)
+    project.data["approval_gates 确认闸门"] = build_approval_gates()
 
     units = force_reverse_shot_units(project.data.get("dialogue_lines 对白列表", []))
     shots = [make_shot("SH001", "master_shot 主镜头", scene, [char_a, char_b], "建立空间和轴线", "无", "无", 1, director_read, project)]
@@ -101,6 +102,16 @@ def build_producer_plan(project: Project) -> dict[str, Any]:
     }
 
 
+def build_approval_gates() -> dict[str, str]:
+    return {
+        "script_approved 剧本已确认": "pending 待确认",
+        "assets_approved 资产已确认": "pending 待确认",
+        "storyboard_approved 分镜已确认": "pending 待确认",
+        "prompts_approved 提示词已确认": "pending 待确认",
+        "export_approved 导出已确认": "pending 待确认",
+    }
+
+
 def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dict[str, Any]], action: str, dialogue: str, os_line: str, index: int, director_read: dict[str, str], project: Project) -> dict[str, Any]:
     camera = "slow_push_in 缓慢推进" if "shot_" in purpose else "slight_lateral_move 轻微横移" if "movement" in purpose else "fixed_camera 固定机位"
     if camera not in ALLOWED_CAMERA:
@@ -108,7 +119,7 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
     speaker_mode = "spoken_dialogue 出口对白" if dialogue != "无" else "os_voice OS画外音" if os_line != "无" else "none 无"
     shot_sizes = ["全景 WS", "近景 CU", "近景 CU", "特写 ECU", "中近景 MCU", "近景 CU", "中景 MS", "中近景 MCU"]
     aspect = "16:9 横屏"
-    sketch = build_sketch(purpose, aspect)
+    evidence = build_source_evidence(project.data.get("source_text 原文", ""), index, action, dialogue, os_line)
     motion_grid = build_motion_grid_ascii(purpose) if is_high_risk_purpose(purpose) else ""
     entry_pose = "运动或情绪起点明确"
     exit_pose = "运动结果或情绪落点明确"
@@ -118,6 +129,12 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "shot_purpose 镜头目的": purpose,
         "scene_id 场景编号": scene["scene_id 场景编号"],
         "location_name 场景名称": scene["scene_name 场景名"],
+        "source_text_ref 原文引用位置": evidence["source_text_ref 原文引用位置"],
+        "evidence_quote 原文证据句": evidence["evidence_quote 原文证据句"],
+        "adaptation_note 改编说明": evidence["adaptation_note 改编说明"],
+        "invented_flag 是否AI补充": evidence["invented_flag 是否AI补充"],
+        "source_confidence 原文置信度": evidence["source_confidence 原文置信度"],
+        "unknown_policy 不确定处理规则": "不确定内容必须标注为导演补足，禁止伪装成原文事实",
         "scene_function 场景功能": director_read["scene_function 场景功能"],
         "scene_turn 场景转折": director_read["scene_turn 场景转折"],
         "pov_empathy 观众视角与共情位置": director_read["pov_empathy 观众视角与共情位置"],
@@ -138,10 +155,10 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "camera_angle 机位角度": "轴线同侧，侧前方约30度",
         "camera_movement 机位运动": camera,
         "camera_axis 轴线方向": "A-B连线，摄影机在同侧",
-        "screen_direction 画面方向": "A在画面左侧，B在画面右侧；A视线→，B视线←；保持同侧轴线，不跳轴",
+        "screen_direction 画面方向": "A在画面左侧，B在画面右侧；A视线->，B视线<-；保持同侧轴线，不跳轴",
         "layer_depth 前中后景": build_layer_depth(scene),
         "prop_anchor 道具锚点": build_prop_anchor(project, chars[0], action),
-        "sketch_ascii 简笔手绘图": sketch,
+        "sketch_ascii 简笔手绘图": build_sketch(purpose, aspect),
         "movement_arrow 运动箭头": build_movement_arrow(purpose),
         "camera_arrow 镜头箭头": build_camera_arrow(camera),
         "motion_grid_ascii 动作拆解六宫格": motion_grid,
@@ -159,6 +176,30 @@ def make_shot(shot_id: str, purpose: str, scene: dict[str, Any], chars: list[dic
         "allowed_changes 允许变化": "只允许表情、手部小动作、光线轻微变化",
         "retake_variable 本次返修变量": "none 未返修；返修时一次只改一个变量",
         "fallback_shot 备用镜头": "改为侧脸、背影、手部、道具或反应镜头",
+    }
+
+
+def build_source_evidence(text: str, index: int, action: str, dialogue: str, os_line: str) -> dict[str, str]:
+    clean = " ".join(text.split())
+    target = dialogue if dialogue != "无" else os_line if os_line != "无" else ""
+    if target and target in clean:
+        pos = clean.find(target)
+        start = max(0, pos - 30)
+        end = min(len(clean), pos + len(target) + 30)
+        return {
+            "source_text_ref 原文引用位置": f"char:{pos}-{pos + len(target)}",
+            "evidence_quote 原文证据句": clean[start:end],
+            "adaptation_note 改编说明": "对白或旁白来自原文，镜头调度为导演拆解",
+            "invented_flag 是否AI补充": "source_supported 原文支持",
+            "source_confidence 原文置信度": "high 高",
+        }
+    quote = clean[:120] if clean else "无原文"
+    return {
+        "source_text_ref 原文引用位置": f"approx_shot:{index}",
+        "evidence_quote 原文证据句": quote,
+        "adaptation_note 改编说明": f"{action} 为导演调度补足，需用户确认是否符合原文",
+        "invented_flag 是否AI补充": "director_bridge 导演补足",
+        "source_confidence 原文置信度": "medium 中" if quote != "无原文" else "low 低",
     }
 
 
