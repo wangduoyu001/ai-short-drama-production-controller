@@ -19,7 +19,7 @@ def init_project(input_path: Path, out_dir: Path, title: str | None) -> None:
     text = input_path.read_text(encoding="utf-8").strip()
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.2.2",
+        "skill_version 技能版本": "0.2.3",
         "source_text 原文": text,
         "scope_gate 范围闸门": {
             "production_mode 制作模式": "fast_demo 快速样片模式",
@@ -82,13 +82,23 @@ def render_assets(project: Project) -> str:
 
 def render_storyboard(project: Project) -> str:
     lines = ["# storyboard 分镜执行文档"]
+    lines += render_code_block("storyboard_grid_ascii 分镜总览简笔图", project.data.get("storyboard_grid_ascii 分镜总览简笔图", "缺少分镜总览简笔图"))
+    dialogue_grid = project.data.get("dialogue_coverage_ascii 对白覆盖图", "")
+    if dialogue_grid:
+        lines += render_code_block("dialogue_coverage_ascii 对白覆盖图", dialogue_grid)
     director_read = project.data.get("director_read 导演读本", {})
     if director_read:
         lines.append("\n## director_read 导演读本")
         lines.append(render_dict_block(director_read))
     for shot in project.shots:
         lines.append(f"\n## {shot['shot_id 镜头编号']} {shot['shot_purpose 镜头目的']}")
+        lines += render_code_block("sketch_ascii 简笔手绘图", shot.get("sketch_ascii 简笔手绘图", "缺少单镜头简笔手绘图"), level="###")
+        motion_grid = shot.get("motion_grid_ascii 动作拆解六宫格", "")
+        if motion_grid:
+            lines += render_code_block("motion_grid_ascii 动作拆解六宫格", motion_grid, level="###")
         for key, value in shot.items():
+            if key in {"sketch_ascii 简笔手绘图", "motion_grid_ascii 动作拆解六宫格"}:
+                continue
             lines.append(f"- {key}：{value}")
     return "\n".join(lines)
 
@@ -148,6 +158,11 @@ def render_qa(qa: dict) -> str:
     lines.append("\n## overwrite_rule 覆盖规则")
     lines.append("返修后直接覆盖旧文档，禁止生成 qa_final.md / prompts_v2.md / storyboard_fixed.md。")
     return "\n".join(lines)
+
+
+def render_code_block(title: str, content: object, level: str = "##") -> list[str]:
+    fence = "`" * 3
+    return [f"\n{level} {title}", f"{fence}text", str(content), fence]
 
 
 def render_dict_block(data: Any) -> str:
