@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
+from .v02_batch_inference import attach_batch_inference
 from .v02_dialogue_bind import bind_dialogue_to_characters
 from .v02_director_docs import write_director_docs
 from .v02_exporters import export_project
@@ -42,6 +43,7 @@ def build_project(text: str, title: str | None) -> Project:
     build_shots(project)
     attach_sound_and_prompts(project)
     attach_shot_inference(project)
+    attach_batch_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
     return project
@@ -83,6 +85,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     expand_project_assets(project)
     build_preproduction(project)
     attach_shot_inference(project)
+    attach_batch_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
     save_project(project, project_dir)
