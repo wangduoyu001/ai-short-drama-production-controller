@@ -6,7 +6,7 @@ from pathlib import Path
 from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
 from .v02_batch_inference import attach_batch_inference
-from .v02_constants import SKILL_VERSION
+from .v02_constants import DOCUMENT_VERSION, SKILL_VERSION
 from .v02_coverage_qa import attach_coverage_qa
 from .v02_dialogue_bind import bind_dialogue_to_characters
 from .v02_director_docs import write_director_docs
@@ -31,6 +31,7 @@ def build_project(text: str, title: str | None) -> Project:
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
         "skill_version 技能版本": SKILL_VERSION,
+        "document_version 文档版本": DOCUMENT_VERSION,
         "source_text 原文": text,
         "scope_gate 范围闸门": {
             "production_mode 制作模式": "director_package 导演物料包模式",
