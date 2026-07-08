@@ -3,16 +3,19 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from .v02_constants import VIDEO_PROMPTS_FILENAME
 from .v02_models import Project
 from .v02_io import write_text
+from .v02_qa_gate import run_qa_gate
 
 
 def export_project(project: Project, out_dir: Path) -> None:
+    run_qa_gate(project, out_dir, block_on_blocker=True)
     export_dir = out_dir / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     write_text(export_dir / "first_frame_prompts.md", render_first_frame_prompts(project))
     write_text(export_dir / "image_prompts.md", render_image_prompts(project))
-    write_text(export_dir / "video_prompts.md", render_video_prompts(project))
+    write_text(export_dir / VIDEO_PROMPTS_FILENAME, render_video_prompts(project))
     write_text(export_dir / "end_frame_prompts.md", render_end_frame_prompts(project))
     write_text(export_dir / "negative_prompts.md", render_negative_prompts(project))
     write_text(export_dir / "fallback_shots.md", render_fallback_shots(project))
@@ -96,8 +99,8 @@ def render_batch_inference(project: Project) -> str:
 
 def write_shot_csv(project: Project, path: Path) -> None:
     fields = [
-        "shot_id 镜头编号", "clip_id 单段编号", "clip_type 片段类型", "clip_duration_seconds 片段时长秒数", "model_duration_limit 模型时长限制", "shot_density 镜头密度", "clip_shot_index 片段内镜头序号",
-        "beat_id 节拍编号", "shot_purpose 镜头目的", "scene_id 场景编号", "source_quote 原文节拍证据", "focus_character 画面主体", "speaker_mode 发声模式", "dialogue_line 出口对白",
+        "shot_id 镜头编号", "event_id 事件编号", "beat_id 节拍编号", "clip_id 单段编号", "clip_type 片段类型", "clip_duration_seconds 片段时长秒数", "model_duration_limit 模型时长限制", "shot_density 镜头密度", "clip_shot_index 片段内镜头序号",
+        "shot_purpose 镜头目的", "source_quote 原文证据", "source_quote 原文节拍证据", "scene_id 场景编号", "character_id 角色编号", "prop_id 道具编号", "focus_character 画面主体", "speaker_mode 发声模式", "dialogue_line 出口对白",
         "shot_size 景别", "camera_movement 机位运动", "screen_direction 画面方向", "movement_arrow 运动箭头", "planned_end_state 计划结束状态", "fallback_shot 备用镜头",
     ]
     write_csv(project, path, fields)
@@ -120,7 +123,11 @@ def write_producer_csv(project: Project, path: Path) -> None:
 
 
 def write_action_csv(project: Project, path: Path) -> None:
-    fields = ["action_id 动作编号", "related_shot_id 对应镜头编号", "start_state 起点状态", "end_state 终点状态", "attack_line 攻击线", "defense_line 防守线", "contact_point 接触点", "impact_result 结果", "screen_direction 画面方向", "safety_note 安全说明", "fallback_shot 备用镜头"]
+    fields = [
+        "action_id 动作编号", "related_shot_id 对应镜头编号", "event_id 事件编号", "beat_id 节拍编号", "start_state 起始姿态", "end_state 结束姿态",
+        "attack_line 攻击线", "movement_line 移动线", "defense_line 防守线", "contact_point 接触点", "speed 速度", "result 结果", "risk_level 风险等级",
+        "screen_direction 画面方向", "backup_shot 备用镜头", "grid_cut_prompt 宫格硬切提示词",
+    ]
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
