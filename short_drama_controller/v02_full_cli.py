@@ -6,6 +6,8 @@ from pathlib import Path
 from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
 from .v02_batch_inference import attach_batch_inference
+from .v02_constants import SKILL_VERSION
+from .v02_coverage_qa import attach_coverage_qa
 from .v02_dialogue_bind import bind_dialogue_to_characters
 from .v02_director_docs import write_director_docs
 from .v02_exporters import export_project
@@ -14,12 +16,12 @@ from .v02_io import read_project, write_project, write_text
 from .v02_models import Project
 from .v02_preproduction import build_action_choreography, build_preproduction
 from .v02_prompts import attach_sound_and_prompts
-from .v02_quality import summary, validate
+from .v02_qa_gate import evaluate, render_qa
 from .v02_repair import repair_project
 from .v02_shot_inference import attach_shot_inference
 from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
-from .v02_cli import render_assets, render_producer, render_prompts, render_qa, render_script, render_sound, render_storyboard
+from .v02_cli import render_assets, render_producer, render_prompts, render_script, render_sound, render_storyboard
 
 
 def build_project(text: str, title: str | None) -> Project:
@@ -27,11 +29,11 @@ def build_project(text: str, title: str | None) -> Project:
     dialogues = bind_dialogue_to_characters(text, assets["characters 角色列表"])
     project = Project({
         "project_name 项目名": title or "untitled_short_drama 未命名短剧",
-        "skill_version 技能版本": "0.4.0",
+        "skill_version 技能版本": SKILL_VERSION,
         "source_text 原文": text,
         "scope_gate 范围闸门": {
             "production_mode 制作模式": "director_package 导演物料包模式",
-            "preproduction_required 前期拆解必需": "chapter_intake / story_bible / character_cards / scene_plan / asset_lock",
+            "preproduction_required 前期拆解必需": "chapter_intake / story_events / characters / scenes / props / world_bible / style_bible / asset_lock",
             "generation_clip_duration 生成片段时长": "4-15秒",
             "shot_count_rule 镜头数量规则": "由 event_blocks 和 clip_type 决定，不固定8-12镜",
         },
@@ -48,6 +50,7 @@ def build_project(text: str, title: str | None) -> Project:
     attach_batch_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
+    attach_coverage_qa(project)
     return project
 
 
@@ -61,7 +64,7 @@ def save_project(project: Project, out_dir: Path) -> None:
     write_text(out_dir / "sound.md", render_sound(project))
     write_text(out_dir / "prompts.md", render_prompts(project))
     write_director_docs(project, out_dir)
-    write_text(out_dir / "qa.md", render_qa(summary(validate(project))))
+    write_text(out_dir / "qa.md", render_qa(evaluate(project)))
 
 
 def load_project(project_dir: Path) -> Project:
@@ -76,7 +79,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_qa(args: argparse.Namespace) -> None:
     project_dir = Path(args.project)
-    qa = summary(validate(load_project(project_dir)))
+    qa = evaluate(load_project(project_dir))
     write_text(project_dir / "qa.md", render_qa(qa))
     print(qa)
 
@@ -91,6 +94,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     attach_batch_inference(project)
     build_action_choreography(project)
     attach_source_coverage(project)
+    attach_coverage_qa(project)
     save_project(project, project_dir)
     suffix = f" shot={args.shot}" if args.shot else ""
     print(f"v02_repair 返修替换完成: {project_dir}{suffix}")
@@ -121,7 +125,11 @@ def render_single_prompt(shot: dict) -> str:
         f"clip_id 片段编号：{shot.get('clip_id 单段编号', '')}",
         f"clip_type 片段类型：{shot.get('clip_type 片段类型', '')}",
         f"clip_duration_seconds 片段时长秒数：{shot.get('clip_duration_seconds 片段时长秒数', '')}",
+        f"event_id 事件编号：{shot.get('event_id 事件编号', '')}",
         f"beat_id 节拍编号：{shot.get('beat_id 节拍编号', '')}",
+        f"scene_id 场景编号：{shot.get('scene_id 场景编号', '')}",
+        f"character_id 角色编号：{shot.get('character_id 角色编号', '')}",
+        f"prop_id 道具编号：{shot.get('prop_id 道具编号', '')}",
         f"source_quote 原文节拍证据：{shot.get('source_quote 原文节拍证据', '')}",
         "\nfirst_frame_prompt 首帧提示词：",
         shot.get("first_frame_prompt 首帧提示词", ""),
