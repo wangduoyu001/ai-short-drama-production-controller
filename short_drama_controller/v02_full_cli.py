@@ -18,6 +18,7 @@ from .v02_preproduction import build_action_choreography, build_preproduction
 from .v02_prompts import attach_sound_and_prompts
 from .v02_qa_gate import evaluate, render_qa
 from .v02_repair import repair_project
+from .v02_shot_bindings import attach_required_shot_bindings
 from .v02_shot_inference import attach_shot_inference
 from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
@@ -44,6 +45,7 @@ def build_project(text: str, title: str | None) -> Project:
     expand_project_assets(project)
     build_preproduction(project)
     build_shots(project)
+    attach_required_shot_bindings(project)
     attach_sound_and_prompts(project)
     attach_grid_strategy(project)
     attach_shot_inference(project)
@@ -89,6 +91,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     project = repair_project(load_project(project_dir), target_shot_id=args.shot)
     expand_project_assets(project)
     build_preproduction(project)
+    attach_required_shot_bindings(project)
     attach_grid_strategy(project)
     attach_shot_inference(project)
     attach_batch_inference(project)
