@@ -8,12 +8,16 @@ from .v02_models import Project
 
 DOC_MAP = [
     ("chapter_intake.md", "chapter_intake 章节解析文档", "chapter_intake 章节解析"),
+    ("story_events.md", "story_events 事件链文档", "story_events 事件链"),
     ("bible.md", "story_bible 世界观圣经", "story_bible 世界观圣经"),
+    ("world_bible.md", "world_bible 世界观文档", "world_bible 世界观"),
+    ("style_bible.md", "style_bible 风格圣经文档", "style_bible 风格圣经"),
     ("characters.md", "character_cards 角色卡文档", "character_cards 角色卡"),
     ("three_views.md", "three_view_prompts 三视图提示词文档", "three_view_prompts 三视图提示词"),
-    ("style.md", "style_and_palette 风格与色卡文档", "story_bible 世界观圣经"),
+    ("style.md", "style_and_palette 风格与色卡文档", "style_bible 风格圣经"),
     ("scene_plan.md", "scene_plan 场景计划文档", "scene_plan 场景计划"),
     ("action.md", "action_choreography 动作编排文档", "action_choreography 动作编排表"),
+    ("coverage_qa.md", "coverage_qa 关键实体覆盖QA文档", "coverage_qa 关键实体覆盖QA"),
 ]
 
 
