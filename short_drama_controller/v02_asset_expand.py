@@ -8,7 +8,7 @@ SCENE_SEEDS = [
     ("堂口", "民俗堂口"), ("香案", "堂口香案"), ("鸡窝", "夜里的鸡窝"), ("破庙", "破庙室内"),
     ("院子", "乡村院子"), ("山路", "荒山小路"), ("客栈", "古代客栈大堂"),
 ]
-ENTITY_SEEDS = ["黄皮子", "狐仙", "仙家", "异物", "灵体", "求助人", "村民", "老人", "妇人", "孩子"]
+ENTITY_SEEDS = ["黄皮子", "狐仙", "仙家", "妖物", "黑影", "异物", "灵体", "求助人", "村民", "老人", "妇人", "孩子"]
 PROP_SEEDS = ["香炉", "供桌", "牌位", "黄纸", "符", "鸡窝", "鸡", "灯笼", "酒碗", "令牌", "信", "木箱", "镖旗", "刀", "剑"]
 
 SCENE_SUFFIXES = ["堂", "庙", "院", "屋", "房", "楼", "阁", "殿", "府", "庄", "寨", "村", "镇", "街", "巷", "桥", "河", "湖", "山", "林", "洞", "谷", "店", "铺", "仓", "船", "车", "台", "坛", "井", "园", "城", "门", "祠", "观", "寺", "塔", "营", "站", "办公室"]
@@ -33,7 +33,7 @@ def expand_characters(project: Project, text: str) -> None:
 
 
 def add_character(project: Project, name: str) -> None:
-    is_entity = any(x in name for x in ["仙", "灵", "异物", "黄皮子", "狐"])
+    is_entity = any(x in name for x in ["仙", "灵", "妖", "异物", "黄皮子", "狐", "黑影"])
     project.characters.append({
         "character_id 角色编号": f"CHAR_{len(project.characters)+1:02d}",
         "character_name 角色名": name,
