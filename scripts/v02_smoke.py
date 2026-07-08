@@ -4,10 +4,18 @@ import argparse
 import tempfile
 from pathlib import Path
 
+from short_drama_controller.v02_asset_expand import expand_project_assets
+from short_drama_controller.v02_batch_inference import attach_batch_inference
+from short_drama_controller.v02_coverage_qa import attach_coverage_qa
 from short_drama_controller.v02_exporters import export_project
 from short_drama_controller.v02_full_cli import build_project, load_project, render_single_prompt, save_project
+from short_drama_controller.v02_grid_strategy import attach_grid_strategy
+from short_drama_controller.v02_preproduction import build_action_choreography, build_preproduction
 from short_drama_controller.v02_qa_gate import evaluate
 from short_drama_controller.v02_repair import repair_project
+from short_drama_controller.v02_shot_bindings import attach_required_shot_bindings
+from short_drama_controller.v02_shot_inference import attach_shot_inference
+from short_drama_controller.v02_source_segments import attach_source_coverage
 
 
 def run_smoke(out_dir: Path) -> None:
@@ -18,7 +26,7 @@ def run_smoke(out_dir: Path) -> None:
     project = load_project(out_dir)
     before = evaluate(project)
     if before["qa_status 质检状态"] == "BLOCKER":
-        save_project(repair_project(project), out_dir)
+        save_project(repair_full_project(project), out_dir)
 
     project = load_project(out_dir)
     after = evaluate(project)
@@ -91,9 +99,8 @@ def run_smoke(out_dir: Path) -> None:
         "grid_strategy 宫格策略",
         "first_frame_prompt 首帧提示词",
         "end_frame_prompt 尾帧提示词",
-        "allow_export 允许导出",
     ]:
-        if text_item not in project_text and text_item != "allow_export 允许导出":
+        if text_item not in project_text:
             raise SystemExit(f"project.yaml missing: {text_item}")
     qa_text = (out_dir / "qa.md").read_text(encoding="utf-8")
     if "allow_export 允许导出" not in qa_text:
@@ -106,6 +113,20 @@ def run_smoke(out_dir: Path) -> None:
             raise SystemExit(f"single prompt missing: {text_item}")
 
     print("v04 smoke PASS")
+
+
+def repair_full_project(project):
+    project = repair_project(project)
+    expand_project_assets(project)
+    build_preproduction(project)
+    attach_required_shot_bindings(project)
+    attach_grid_strategy(project)
+    attach_shot_inference(project)
+    attach_batch_inference(project)
+    build_action_choreography(project)
+    attach_source_coverage(project)
+    attach_coverage_qa(project)
+    return project
 
 
 def main() -> None:
