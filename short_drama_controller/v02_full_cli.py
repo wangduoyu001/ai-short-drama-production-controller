@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from importlib.util import find_spec
 from pathlib import Path
 
+from .v02_action_contract import ensure_action_contract
 from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
 from .v02_batch_inference import attach_batch_inference
@@ -23,6 +26,8 @@ from .v02_shot_inference import attach_shot_inference
 from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
 from .v02_cli import render_assets, render_producer, render_prompts, render_script, render_sound, render_storyboard
+
+CODEX_SKILL_PATH = Path(".agents/skills/ai-short-drama-controller/SKILL.md")
 
 
 def build_project(text: str, title: str | None) -> Project:
@@ -52,6 +57,7 @@ def build_project(text: str, title: str | None) -> Project:
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
+    ensure_action_contract(project)
     attach_source_coverage(project)
     attach_coverage_qa(project)
     return project
@@ -97,6 +103,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
+    ensure_action_contract(project)
     attach_source_coverage(project)
     attach_coverage_qa(project)
     save_project(project, project_dir)
@@ -121,6 +128,58 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     project = build_project(args.text.strip(), args.title or "single_prompt 单提示词")
     shot = next((x for x in project.shots if x["shot_id 镜头编号"] == args.shot), project.shots[0])
     print(render_single_prompt(shot))
+
+
+def _candidate_repo_roots() -> list[Path]:
+    starts = [Path.cwd(), Path(__file__).resolve().parent]
+    roots: list[Path] = []
+    for start in starts:
+        for candidate in (start, *start.parents):
+            if candidate not in roots:
+                roots.append(candidate)
+    return roots
+
+
+def find_repo_root() -> Path:
+    for candidate in _candidate_repo_roots():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "short_drama_controller").is_dir():
+            return candidate
+    return Path.cwd()
+
+
+def _check_skill_frontmatter(skill_path: Path) -> tuple[bool, str]:
+    if not skill_path.is_file():
+        return False, str(skill_path)
+    text = skill_path.read_text(encoding="utf-8")
+    required = [
+        text.startswith("---\n"),
+        "name: ai-short-drama-controller" in text,
+        "description:" in text,
+    ]
+    return all(required), str(skill_path)
+
+
+def cmd_doctor(_args: argparse.Namespace) -> None:
+    root = find_repo_root()
+    skill_path = root / CODEX_SKILL_PATH
+    skill_ok, skill_detail = _check_skill_frontmatter(skill_path)
+    checks = [
+        ("python_version Python版本", sys.version_info >= (3, 10), sys.version.split()[0]),
+        ("entrypoint_module 主入口模块", find_spec("short_drama_controller.v02_full_cli") is not None, "short_drama_controller.v02_full_cli"),
+        ("agents_md 项目规则", (root / "AGENTS.md").is_file(), str(root / "AGENTS.md")),
+        ("codex_skill Codex技能", skill_ok, skill_detail),
+        ("openai_yaml Skill界面元数据", (skill_path.parent / "agents/openai.yaml").is_file(), str(skill_path.parent / "agents/openai.yaml")),
+    ]
+    failed = []
+    print(f"repository_root 仓库根目录: {root}")
+    for name, ok, detail in checks:
+        status = "PASS" if ok else "FAIL"
+        print(f"[{status}] {name}: {detail}")
+        if not ok:
+            failed.append(name)
+    if failed:
+        raise SystemExit(f"doctor 检查失败: {', '.join(failed)}")
+    print("doctor 检查通过：Codex Skill、项目规则和CLI入口均可用。")
 
 
 def render_single_prompt(shot: dict) -> str:
@@ -177,6 +236,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--shot", default="SH001")
     p.add_argument("--title")
     p.set_defaults(func=cmd_prompt)
+    p = sub.add_parser("doctor")
+    p.set_defaults(func=cmd_doctor)
     return parser
 
 

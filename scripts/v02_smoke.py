@@ -4,6 +4,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
+from short_drama_controller.v02_action_contract import ensure_action_contract
 from short_drama_controller.v02_asset_expand import expand_project_assets
 from short_drama_controller.v02_batch_inference import attach_batch_inference
 from short_drama_controller.v02_coverage_qa import attach_coverage_qa
@@ -21,7 +22,7 @@ from short_drama_controller.v02_source_segments import attach_source_coverage
 def run_smoke(out_dir: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "examples" / "input_script.md").read_text(encoding="utf-8")
-    save_project(build_project(text, "v04_smoke"), out_dir)
+    save_project(build_project(text, "v05_smoke"), out_dir)
 
     project = load_project(out_dir)
     before = evaluate(project)
@@ -112,7 +113,7 @@ def run_smoke(out_dir: Path) -> None:
         if text_item not in prompt_text:
             raise SystemExit(f"single prompt missing: {text_item}")
 
-    print("v04 smoke PASS")
+    print("v05 smoke PASS")
 
 
 def repair_full_project(project):
@@ -124,6 +125,7 @@ def repair_full_project(project):
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
+    ensure_action_contract(project)
     attach_source_coverage(project)
     attach_coverage_qa(project)
     return project

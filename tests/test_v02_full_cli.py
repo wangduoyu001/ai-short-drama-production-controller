@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,7 +15,7 @@ from short_drama_controller.v02_qa_gate import evaluate
 def test_pyproject_entrypoint_points_to_full_cli() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "0.4.0"' in pyproject
+    assert 'version = "0.5.0"' in pyproject
     assert 'short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"' in pyproject
     assert "short_drama_controller.v02_cli:main" not in pyproject
 
@@ -60,7 +60,7 @@ def test_export_blocks_when_qa_has_blocker(tmp_path: Path) -> None:
     project_dir.mkdir()
     blocker_project = Project({
         "project_name 项目名": "blocked",
-        "skill_version 技能版本": "0.4.0",
+        "skill_version 技能版本": "0.5.0",
         "source_text 原文": "",
         "characters 角色列表": [],
         "scenes 场景列表": [],
