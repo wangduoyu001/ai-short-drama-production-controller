@@ -6,7 +6,7 @@ from short_drama_controller.v02_qa_gate import evaluate
 
 
 def test_v02_pipeline_smoke(tmp_path: Path) -> None:
-    text = "少年来到镖局。镖头问：“凭什么留下？”少年说：“就凭我还站着。”"
+    text = "夜里，少年在破庙门口握着木剑。老人递出一盏灯笼，说：“你终于来了。”少年转身，门外黑影停住。"
     project = build_project(text, "smoke")
 
     qa = evaluate(project)
