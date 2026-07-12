@@ -5,6 +5,7 @@ import sys
 from importlib.util import find_spec
 from pathlib import Path
 
+from .v02_action_contract import ensure_action_contract
 from .v02_asset_expand import expand_project_assets
 from .v02_assets import extract_assets
 from .v02_batch_inference import attach_batch_inference
@@ -56,6 +57,7 @@ def build_project(text: str, title: str | None) -> Project:
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
+    ensure_action_contract(project)
     attach_source_coverage(project)
     attach_coverage_qa(project)
     return project
@@ -101,6 +103,7 @@ def cmd_repair(args: argparse.Namespace) -> None:
     attach_shot_inference(project)
     attach_batch_inference(project)
     build_action_choreography(project)
+    ensure_action_contract(project)
     attach_source_coverage(project)
     attach_coverage_qa(project)
     save_project(project, project_dir)
