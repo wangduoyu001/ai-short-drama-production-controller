@@ -1,0 +1,7 @@
+interface:
+  display_name: "AI短剧生产控制器"
+  short_description: "剧本改写、资产锁定、故事板、动作分镜、视频提示词与QA"
+  default_prompt: "使用 $ai-short-drama-controller 处理当前AI短剧/漫剧任务，只执行我明确要求的阶段。"
+
+policy:
+  allow_implicit_invocation: false
