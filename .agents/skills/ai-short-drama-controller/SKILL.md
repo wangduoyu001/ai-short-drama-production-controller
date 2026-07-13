@@ -85,7 +85,7 @@ When the user requests the full workflow, execute in this order:
 2. Build `chapter_intake 章节解析` and `story_events 事件链`.
 3. Rewrite a readable script with clear temporal continuity, conflict, hook, and scene-state changes.
 4. Build `world_bible 世界观` and `style_bible 风格圣经` only when the story requires them.
-5. Extract and lock characters, scenes, and props.
+5. Extract and lock only production-worthy assets after shot-oriented reasoning.
 6. Build `beat_map 剧情节拍表`.
 7. Build `clip_plan 生成片段计划`.
 8. Build `shot_plan 分镜计划`.
@@ -105,12 +105,25 @@ When the user requests the full workflow, execute in this order:
 
 ## Asset rules / 资产规则
 
-Read [asset-contract.md](references/asset-contract.md) before generating asset prompts.
+Read [asset-contract.md](references/asset-contract.md) before any asset extraction or asset prompt generation.
 
-- Every asset prompt must be complete and standalone. Do not rely on a hidden master prompt.
-- Lock identity, age, body proportion, hairstyle, costume, materials, colors, props, and scene layout.
-- Character, scene, and prop prompts must use stable IDs.
-- Do not insert user instructions, layout commentary, or explanations into the actual generation prompt.
+Mandatory asset logic:
+
+- `shot_first 镜头优先`：先理解完整剧情并推演未来镜头、景别、机位、人物站位和空间调度，再决定资产。
+- `no_noun_scraping 禁止名词扫描`：不得因为剧本出现人物、场景或道具名称就自动建资产。
+- `recognition_gate 识别闸门`：没有近景识别需求、独立对白、关键动作或连续性需求的人物，不建立单体资产。
+- `crowd_rule 群体规则`：只出现在远景或作为背景的普通士兵、路人、百姓、侍卫、水兵等，只定义群体服装、数量、队形、动作和站位，不制作单人三视图。
+- `prop_rule 道具规则`：只出现一次且不影响连续性的普通物品，如玉玺、酒杯、信件、令牌、普通箭矢，默认不建立正式资产。
+- `core_carrier 核心载体`：船只、马车、机关、平台等如果承担大量镜头，必须按核心资产处理，不能因其属于“道具”而降级。
+- `asset_family 资产族`：核心人物、场景和载体应按剧情需要建立基础状态、关键状态、多视角、人物使用状态、组合站位、群体编队和高频镜头参考。
+- `production_roi 制作回报`：每个资产必须说明能服务多少镜头、减少什么错误、为什么值得制作。无法证明价值的内容默认不制作。
+- `explicit_output 明确输出`：必须列出资产等级、建议图片数量、每张具体内容、状态、视角、组合关系、制作理由，以及明确的无需制作清单。
+
+Every asset prompt must be complete and standalone. Do not rely on a hidden master prompt.
+
+Lock identity, age, body proportion, hairstyle, costume, materials, colors, props, and scene layout only for assets that passed the asset decision gate.
+
+Use stable IDs from the asset contract. Do not insert user instructions, layout commentary, or explanations into the actual generation prompt.
 
 ## Storyboard rules / 故事板规则
 
@@ -175,8 +188,11 @@ For direct chat input, write the text to an operating-system temporary UTF-8 fil
 Before export verify:
 
 - source events are covered
-- major characters, scenes, and props are present
-- asset locks are complete
+- major characters and core scenes are present
+- low-value one-off items were not over-assetized
+- remote crowd characters were not incorrectly turned into single-character assets
+- core carriers and state assets are not missing
+- asset locks are complete for approved assets
 - clip duration stays within model limits
 - spatial continuity and axis rules are valid
 - dialogue speaker and mouth state match
