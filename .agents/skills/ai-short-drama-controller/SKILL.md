@@ -31,17 +31,18 @@ Do not use this skill to:
 
 Only execute the stage the user requested.
 
-用户只要求剧本时，只交付剧本；只要求资产时，只交付资产；只要求视频提示词时，只交付视频提示词。除非用户明确要求全流程，不得自动生成整套文件。
+用户只要求剧本时，只交付剧本；只要求资产提取时，只交付资产规划；只要求资产生图提示词时，只依据已批准资产清单交付完整提示词；只要求视频提示词时，只交付视频提示词。除非用户明确要求全流程，不得自动生成整套文件。
 
 Stages:
 
 1. `rewrite 剧本改写`
 2. `assets 资产提取`
-3. `clips 生成片段拆分`
-4. `storyboard 故事板`
-5. `prompts 生成提示词`
-6. `qa 质检返修`
-7. `export 导出`
+3. `asset_prompts 资产生图提示词`
+4. `clips 生成片段拆分`
+5. `storyboard 故事板`
+6. `prompts 生成提示词`
+7. `qa 质检返修`
+8. `export 导出`
 
 ## Input handling / 输入处理
 
@@ -52,6 +53,7 @@ Classify the input internally as one of:
 - `outline 大纲`
 - `idea 创意`
 - `partial_prompt 半成品提示词`
+- `approved_asset_list 已批准资产清单`
 
 Do not force a valid script back through a novel-adaptation template.
 
@@ -86,12 +88,14 @@ When the user requests the full workflow, execute in this order:
 3. Rewrite a readable script with clear temporal continuity, conflict, hook, and scene-state changes.
 4. Build `world_bible 世界观` and `style_bible 风格圣经` only when the story requires them.
 5. Extract and lock only production-worthy assets after shot-oriented reasoning.
-6. Build `beat_map 剧情节拍表`.
-7. Build `clip_plan 生成片段计划`.
-8. Build `shot_plan 分镜计划`.
-9. Generate image, first-frame, video, end-frame, sound, negative, and fallback prompts.
-10. Run QA. Do not export while a `BLOCKER` exists.
-11. Repair by replacing the target file or target shot, never by creating duplicate versions.
+6. Confirm the asset list before generating asset prompts.
+7. Generate asset prompts in dependency order and lock approved upstream assets before downstream state or combination assets.
+8. Build `beat_map 剧情节拍表`.
+9. Build `clip_plan 生成片段计划`.
+10. Build `shot_plan 分镜计划`.
+11. Generate image, first-frame, video, end-frame, sound, negative, and fallback prompts.
+12. Run QA. Do not export while a `BLOCKER` exists.
+13. Repair by replacing the target file or target shot, never by creating duplicate versions.
 
 ## Script rules / 剧本规则
 
@@ -105,7 +109,17 @@ When the user requests the full workflow, execute in this order:
 
 ## Asset rules / 资产规则
 
-Read [asset-contract.md](references/asset-contract.md) before any asset extraction or asset prompt generation.
+For asset extraction, read [asset-contract.md](references/asset-contract.md).
+
+For asset image-prompt generation, read both:
+
+- [asset-contract.md](references/asset-contract.md)
+- [asset-prompt-generator.md](references/asset-prompt-generator.md)
+
+The two stages must remain separate:
+
+- `assets 资产提取` 决定哪些资产值得制作、资产等级、资产族和生成顺序。
+- `asset_prompts 资产生图提示词` 只依据已批准资产清单生成完整提示词，不得重新提取、增加、删除或改变资产。
 
 Mandatory asset logic:
 
@@ -117,13 +131,17 @@ Mandatory asset logic:
 - `core_carrier 核心载体`：船只、马车、机关、平台等如果承担大量镜头，必须按核心资产处理，不能因其属于“道具”而降级。
 - `asset_family 资产族`：核心人物、场景和载体应按剧情需要建立基础状态、关键状态、多视角、人物使用状态、组合站位、群体编队和高频镜头参考。
 - `production_roi 制作回报`：每个资产必须说明能服务多少镜头、减少什么错误、为什么值得制作。无法证明价值的内容默认不制作。
-- `explicit_output 明确输出`：必须列出资产等级、建议图片数量、每张具体内容、状态、视角、组合关系、制作理由，以及明确的无需制作清单。
+- `dependency_order 依赖顺序`：先基础、后固定变化、后状态、后组合、后调度；上游未审核，下游不得假装可生成。
+- `input_gate 输入闸门`：资产清单信息不足以写出准确提示词时，必须主动要求剧本或相关剧情，不得自行编造。
+- `persistent_change 固定变化`：断臂、永久伤疤、长期换装、固定武器等后续持续变化必须建立完整新人物资产；单片段可恢复变化不单独建资产。
+- `visual_lock 视觉锁定`：整套提示词必须保证人物、场景、载体、风格、色调、材质和光线统一。
+- `explicit_output 明确输出`：资产提取必须列出等级、图片数量、具体状态、视角、组合关系和无需制作清单；资产提示词必须输出当前阶段完整的一套可直接使用的提示词。
 
 Every asset prompt must be complete and standalone. Do not rely on a hidden master prompt.
 
 Lock identity, age, body proportion, hairstyle, costume, materials, colors, props, and scene layout only for assets that passed the asset decision gate.
 
-Use stable IDs from the asset contract. Do not insert user instructions, layout commentary, or explanations into the actual generation prompt.
+Use stable IDs from the asset contract. Required production labels such as character name, front, side, back, top view, blocking and movement direction are allowed; decorative text, watermarks, logos and gibberish remain forbidden.
 
 ## Storyboard rules / 故事板规则
 
@@ -193,6 +211,12 @@ Before export verify:
 - remote crowd characters were not incorrectly turned into single-character assets
 - core carriers and state assets are not missing
 - asset locks are complete for approved assets
+- asset prompt input was sufficient or missing script/context was requested
+- asset prompt generation did not alter the approved asset list
+- person, scene, carrier, style, palette, material and lighting consistency are locked
+- permanent character changes use complete new character sheets
+- downstream state/combination assets inherit approved upstream assets
+- required production labels are present and decorative text is absent
 - clip duration stays within model limits
 - spatial continuity and axis rules are valid
 - dialogue speaker and mouth state match
