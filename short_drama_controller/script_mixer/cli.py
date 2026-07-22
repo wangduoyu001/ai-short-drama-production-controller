@@ -24,7 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="扫描本机软件、模型和常见缓存位置")
     subparsers.add_parser("models", help="读取Ollama已安装模型、能力和自动选择结果")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
-    subparsers.add_parser("catalog-status", help="显示已入库原视频、镜头和向量数量")
+    subparsers.add_parser("catalog-status", help="显示已入库原视频、镜头、音轨和向量数量")
 
     scan = subparsers.add_parser("scan-media", help="扫描本地视频目录并增量写入素材库")
     scan.add_argument("--root", required=True, help="本地原始视频目录")
@@ -61,10 +61,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     plan = subparsers.add_parser("plan", help="根据文案生成画面意图和混剪时间线")
     plan.add_argument("--script", required=True, help="UTF-8文案文件")
-    plan.add_argument("--duration", type=float, help="目标时长；未提供时按语速估算")
+    plan.add_argument("--duration", type=float, help="无真实配音时的目标时长；默认按语速估算")
     plan.add_argument("--project-id")
+    plan.add_argument(
+        "--audio-mode",
+        choices=["auto", "narration", "source", "mixed", "mute"],
+        default="auto",
+        help="auto=有配音用配音、无配音保留原声；mixed=配音和压低后的原声混合",
+    )
+    plan.add_argument("--voice", help="真实配音音频；其实际时长优先于--duration")
+    plan.add_argument(
+        "--voice-duration",
+        type=float,
+        help="已知配音时长时可直接提供；否则使用自动发现的FFprobe读取",
+    )
     plan.add_argument("--render", action="store_true", help="规划后调用自动发现的FFmpeg渲染")
-    plan.add_argument("--voice", help="可选配音文件")
     plan.add_argument("--dry-run", action="store_true", help="仅生成FFmpeg命令，不执行")
     return parser
 
@@ -106,7 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         result = {
             "database": config.database_path,
             "source_count": len(sources),
+            "source_with_audio_count": sum(source.has_audio for source in sources),
             "clip_count": len(clips),
+            "clip_with_audio_count": sum(clip.has_audio for clip in clips),
             "source_status": status_counts,
             "duration_seconds": round(sum(source.duration for source in sources), 3),
             "missing_source_files": sum(not Path(source.source_path).exists() for source in sources),
@@ -154,19 +167,22 @@ def main(argv: list[str] | None = None) -> int:
             script_text=script_text,
             project_id=args.project_id,
             target_duration=args.duration,
+            narration_path=args.voice,
+            audio_mode=args.audio_mode,
+            narration_duration=args.voice_duration,
         )
         result = {
             "project_id": timeline.project_id,
             "project_dir": str(project_dir),
             "duration": timeline.duration,
             "segments": len(timeline.segments),
-            "warnings": timeline.warnings,
+            "audio": asdict_audio(timeline.audio),
+            "warnings": [*timeline.warnings, *timeline.audio.warnings],
         }
         if args.render:
             output = pipeline.render(
                 timeline,
                 project_dir,
-                voice_path=args.voice,
                 dry_run=args.dry_run,
             )
             result["render_output"] = str(output)
@@ -176,6 +192,17 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.error(f"Unsupported command: {args.command}")
     return 2
+
+
+def asdict_audio(audio) -> dict:
+    return {
+        "mode": audio.mode,
+        "narration_path": audio.narration_path,
+        "narration_duration": audio.narration_duration,
+        "source_audio_segments": audio.source_audio_segments,
+        "source_audio_coverage": audio.source_audio_coverage,
+        "warnings": audio.warnings,
+    }
 
 
 if __name__ == "__main__":
