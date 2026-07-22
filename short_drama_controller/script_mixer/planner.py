@@ -157,6 +157,7 @@ def plan_timeline(
                 source_end=source_end,
                 match_score=candidate.score,
                 speed=speed,
+                audio_enabled=clip.has_audio,
                 match_reasons=candidate.reasons,
             )
             segments.append(segment)
