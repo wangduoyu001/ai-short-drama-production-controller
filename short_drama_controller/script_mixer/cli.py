@@ -24,7 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="扫描本机软件、模型和常见缓存位置")
     subparsers.add_parser("models", help="读取Ollama已安装模型、能力和自动选择结果")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
-    subparsers.add_parser("catalog-status", help="显示已入库原视频和镜头数量")
+    subparsers.add_parser("catalog-status", help="显示已入库原视频、镜头和向量数量")
 
     scan = subparsers.add_parser("scan-media", help="扫描本地视频目录并增量写入素材库")
     scan.add_argument("--root", required=True, help="本地原始视频目录")
@@ -47,6 +47,14 @@ def _build_parser() -> argparse.ArgumentParser:
     enrich = subparsers.add_parser("enrich-media", help="使用本地Ollama视觉模型分析关键帧")
     enrich.add_argument("--limit", type=int, help="本次最多分析多少个镜头")
     enrich.add_argument("--force", action="store_true", help="强制重新分析已有描述的镜头")
+
+    embeddings = subparsers.add_parser(
+        "build-embeddings",
+        help="使用本地Ollama嵌入模型增量构建镜头语义向量",
+    )
+    embeddings.add_argument("--limit", type=int, help="本次最多处理多少个镜头")
+    embeddings.add_argument("--force", action="store_true", help="强制重建未变化镜头的向量")
+    embeddings.add_argument("--batch-size", type=int, default=32, help="批量嵌入条数，默认32")
 
     ingest = subparsers.add_parser("import-manifest", help="导入镜头清单JSON")
     ingest.add_argument("--manifest", required=True)
@@ -106,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             "analyzed_clip_count": sum(
                 bool(clip.description and clip.shot_type != "unknown") for clip in clips
             ),
+            "embedding_cache": pipeline.embedding_store.model_counts(),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -122,6 +131,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "enrich-media":
         summary = pipeline.enrich_media(limit=args.limit, force=args.force)
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+        return 0 if summary.failed == 0 else 1
+
+    if args.command == "build-embeddings":
+        summary = pipeline.build_embeddings(
+            limit=args.limit,
+            force=args.force,
+            batch_size=args.batch_size,
+        )
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0 if summary.failed == 0 else 1
 
