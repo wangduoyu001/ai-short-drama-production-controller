@@ -23,6 +23,25 @@ def _build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("doctor", help="扫描本机软件、模型和常见缓存位置")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
+    subparsers.add_parser("catalog-status", help="显示已入库原视频和镜头数量")
+
+    scan = subparsers.add_parser("scan-media", help="扫描本地视频目录并增量写入素材库")
+    scan.add_argument("--root", required=True, help="本地原始视频目录")
+    scan.add_argument(
+        "--fast",
+        action="store_true",
+        help="快速入库：跳过场景检测和缩略图，使用固定窗口切分",
+    )
+    scan.add_argument(
+        "--force",
+        action="store_true",
+        help="强制重新分析，即使文件指纹没有变化",
+    )
+    scan.add_argument(
+        "--prune-missing",
+        action="store_true",
+        help="删除数据库中属于该目录但本地已经不存在的素材记录",
+    )
 
     ingest = subparsers.add_parser("import-manifest", help="导入镜头清单JSON")
     ingest.add_argument("--manifest", required=True)
@@ -59,6 +78,33 @@ def main(argv: list[str] | None = None) -> int:
         catalog.initialize()
         print(Path(config.database_path))
         return 0
+
+    if args.command == "catalog-status":
+        sources = pipeline.catalog.list_sources()
+        clips = pipeline.catalog.list_clips(usable_only=False)
+        status_counts: dict[str, int] = {}
+        for source in sources:
+            status_counts[source.status] = status_counts.get(source.status, 0) + 1
+        result = {
+            "database": config.database_path,
+            "source_count": len(sources),
+            "clip_count": len(clips),
+            "source_status": status_counts,
+            "duration_seconds": round(sum(source.duration for source in sources), 3),
+            "missing_source_files": sum(not Path(source.source_path).exists() for source in sources),
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "scan-media":
+        summary = pipeline.scan_media(
+            root=args.root,
+            fast=args.fast,
+            force=args.force,
+            prune_missing=args.prune_missing,
+        )
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+        return 0 if summary.failed_files == 0 else 1
 
     if args.command == "import-manifest":
         count = import_manifest(pipeline.catalog, args.manifest)
