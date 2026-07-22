@@ -22,6 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     init_config.add_argument("--out", default="script_mixer.config.json")
 
     subparsers.add_parser("doctor", help="扫描本机软件、模型和常见缓存位置")
+    subparsers.add_parser("models", help="读取Ollama已安装模型、能力和自动选择结果")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
     subparsers.add_parser("catalog-status", help="显示已入库原视频和镜头数量")
 
@@ -42,6 +43,10 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="删除数据库中属于该目录但本地已经不存在的素材记录",
     )
+
+    enrich = subparsers.add_parser("enrich-media", help="使用本地Ollama视觉模型分析关键帧")
+    enrich.add_argument("--limit", type=int, help="本次最多分析多少个镜头")
+    enrich.add_argument("--force", action="store_true", help="强制重新分析已有描述的镜头")
 
     ingest = subparsers.add_parser("import-manifest", help="导入镜头清单JSON")
     ingest.add_argument("--manifest", required=True)
@@ -73,6 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
+    if args.command == "models":
+        result = pipeline.model_status()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["available"] else 1
+
     if args.command == "init-db":
         catalog = MediaCatalog(config.database_path)
         catalog.initialize()
@@ -92,6 +102,10 @@ def main(argv: list[str] | None = None) -> int:
             "source_status": status_counts,
             "duration_seconds": round(sum(source.duration for source in sources), 3),
             "missing_source_files": sum(not Path(source.source_path).exists() for source in sources),
+            "thumbnail_count": sum(bool(clip.thumbnail_path) for clip in clips),
+            "analyzed_clip_count": sum(
+                bool(clip.description and clip.shot_type != "unknown") for clip in clips
+            ),
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -105,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0 if summary.failed_files == 0 else 1
+
+    if args.command == "enrich-media":
+        summary = pipeline.enrich_media(limit=args.limit, force=args.force)
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
+        return 0 if summary.failed == 0 else 1
 
     if args.command == "import-manifest":
         count = import_manifest(pipeline.catalog, args.manifest)
