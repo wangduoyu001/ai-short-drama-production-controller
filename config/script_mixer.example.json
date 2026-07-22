@@ -6,6 +6,32 @@
     "max_scan_depth": 3,
     "max_entries_per_root": 5000
   },
+  "media_scan": {
+    "supported_extensions": [
+      ".mp4",
+      ".mov",
+      ".mkv",
+      ".avi",
+      ".webm",
+      ".m4v",
+      ".mts",
+      ".m2ts"
+    ],
+    "recursive": true,
+    "follow_symlinks": false,
+    "minimum_source_seconds": 0.7,
+    "scene_detection_enabled": true,
+    "scene_threshold": 0.34,
+    "minimum_scene_seconds": 0.7,
+    "maximum_scene_seconds": 6.0,
+    "fallback_window_seconds": 3.0,
+    "generate_thumbnails": true,
+    "thumbnail_width": 360,
+    "thumbnail_root": ".runtime/script_mixer/thumbnails",
+    "proxy_generation_enabled": false,
+    "proxy_root": ".runtime/script_mixer/proxies",
+    "fingerprint_sample_bytes": 1048576
+  },
   "mixing": {
     "target_width": 1080,
     "target_height": 1920,
