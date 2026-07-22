@@ -57,6 +57,26 @@ class LocalModelConfig:
 
 
 @dataclass(slots=True)
+class AudioConfig:
+    default_mode: str = "auto"
+    sample_rate: int = 48000
+    channels: int = 2
+    source_volume: float = 1.0
+    mixed_source_volume: float = 0.22
+    narration_volume: float = 1.0
+    normalize_source: bool = False
+    normalize_narration: bool = True
+    narration_target_lufs: float = -16.0
+    source_target_lufs: float = -18.0
+    true_peak: float = -1.5
+    loudness_range: float = 11.0
+    ducking_threshold: float = 0.03
+    ducking_ratio: float = 10.0
+    ducking_attack_ms: float = 20.0
+    ducking_release_ms: float = 300.0
+
+
+@dataclass(slots=True)
 class MixingRules:
     target_width: int = 1080
     target_height: int = 1920
@@ -77,6 +97,7 @@ class RuntimeConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
     local_models: LocalModelConfig = field(default_factory=LocalModelConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
