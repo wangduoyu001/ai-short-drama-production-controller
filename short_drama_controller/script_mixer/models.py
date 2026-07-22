@@ -147,6 +147,7 @@ class MediaClip:
     has_watermark: bool = False
     usable: bool = True
     thumbnail_path: str = ""
+    has_audio: bool = False
 
     @property
     def is_vertical(self) -> bool:
@@ -185,6 +186,30 @@ class TimelineSegment:
 
 
 @dataclass(slots=True)
+class AudioPlan:
+    mode: str = "mute"
+    narration_path: str = ""
+    narration_duration: float = 0.0
+    sample_rate: int = 48000
+    channels: int = 2
+    source_volume: float = 1.0
+    narration_volume: float = 1.0
+    normalize_source: bool = False
+    normalize_narration: bool = True
+    narration_target_lufs: float = -16.0
+    source_target_lufs: float = -18.0
+    true_peak: float = -1.5
+    loudness_range: float = 11.0
+    ducking_threshold: float = 0.03
+    ducking_ratio: float = 10.0
+    ducking_attack_ms: float = 20.0
+    ducking_release_ms: float = 300.0
+    source_audio_segments: int = 0
+    source_audio_coverage: float = 0.0
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Timeline:
     project_id: str
     width: int
@@ -192,6 +217,7 @@ class Timeline:
     fps: int
     duration: float
     segments: list[TimelineSegment]
+    audio: AudioPlan = field(default_factory=AudioPlan)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -202,5 +228,6 @@ class Timeline:
             "fps": self.fps,
             "duration": self.duration,
             "segments": [asdict(item) | {"duration": item.duration} for item in self.segments],
+            "audio": asdict(self.audio),
             "warnings": self.warnings,
         }
