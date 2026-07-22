@@ -53,6 +53,56 @@ class DiscoveryReport:
 
 
 @dataclass(slots=True)
+class MediaSource:
+    source_id: str
+    source_path: str
+    filename: str
+    extension: str
+    file_size: int
+    modified_ns: int
+    fingerprint: str
+    duration: float
+    width: int
+    height: int
+    fps: float
+    video_codec: str = ""
+    audio_codec: str = ""
+    has_audio: bool = False
+    rotation: int = 0
+    status: str = "ready"
+    error: str = ""
+
+    @property
+    def is_vertical(self) -> bool:
+        width, height = self.display_dimensions
+        return height > width > 0
+
+    @property
+    def display_dimensions(self) -> tuple[int, int]:
+        if abs(self.rotation) % 180 == 90:
+            return self.height, self.width
+        return self.width, self.height
+
+
+@dataclass(slots=True)
+class MediaScanSummary:
+    root: str
+    discovered_files: int = 0
+    new_files: int = 0
+    changed_files: int = 0
+    unchanged_files: int = 0
+    skipped_files: int = 0
+    failed_files: int = 0
+    sources_written: int = 0
+    clips_written: int = 0
+    thumbnails_written: int = 0
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class ScriptUnit:
     unit_id: str
     text: str
@@ -96,6 +146,7 @@ class MediaClip:
     quality_score: float = 0.5
     has_watermark: bool = False
     usable: bool = True
+    thumbnail_path: str = ""
 
     @property
     def is_vertical(self) -> bool:
