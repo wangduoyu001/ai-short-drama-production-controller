@@ -53,11 +53,13 @@ CREATE TABLE IF NOT EXISTS media_clips (
     has_watermark INTEGER NOT NULL DEFAULT 0,
     usable INTEGER NOT NULL DEFAULT 1,
     thumbnail_path TEXT NOT NULL DEFAULT '',
+    has_audio INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_media_clips_source_id ON media_clips(source_id);
 CREATE INDEX IF NOT EXISTS idx_media_clips_usable ON media_clips(usable);
+CREATE INDEX IF NOT EXISTS idx_media_clips_has_audio ON media_clips(has_audio);
 
 CREATE TABLE IF NOT EXISTS usage_history (
     project_id TEXT NOT NULL,
@@ -99,6 +101,7 @@ def _row_to_clip(row: sqlite3.Row) -> MediaClip:
         has_watermark=bool(row["has_watermark"]),
         usable=bool(row["usable"]),
         thumbnail_path=row["thumbnail_path"] if "thumbnail_path" in keys else "",
+        has_audio=bool(row["has_audio"]) if "has_audio" in keys else False,
     )
 
 
@@ -138,6 +141,7 @@ class MediaCatalog:
         with self.connect() as connection:
             connection.executescript(_SCHEMA)
             self._ensure_column(connection, "media_clips", "thumbnail_path", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(connection, "media_clips", "has_audio", "INTEGER NOT NULL DEFAULT 0")
 
     @staticmethod
     def _ensure_column(
@@ -208,23 +212,12 @@ class MediaCatalog:
                 updated_at=CURRENT_TIMESTAMP
             """,
             (
-                payload["source_id"],
-                payload["source_path"],
-                payload["filename"],
-                payload["extension"],
-                payload["file_size"],
-                payload["modified_ns"],
-                payload["fingerprint"],
-                payload["duration"],
-                payload["width"],
-                payload["height"],
-                payload["fps"],
-                payload["video_codec"],
-                payload["audio_codec"],
-                int(payload["has_audio"]),
-                payload["rotation"],
-                payload["status"],
-                payload["error"],
+                payload["source_id"], payload["source_path"], payload["filename"],
+                payload["extension"], payload["file_size"], payload["modified_ns"],
+                payload["fingerprint"], payload["duration"], payload["width"],
+                payload["height"], payload["fps"], payload["video_codec"],
+                payload["audio_codec"], int(payload["has_audio"]), payload["rotation"],
+                payload["status"], payload["error"],
             ),
         )
 
@@ -242,8 +235,8 @@ class MediaCatalog:
             INSERT INTO media_clips (
                 clip_id, source_id, source_path, source_start, source_end, duration,
                 description, tags_json, emotions_json, shot_type, camera_motion,
-                width, height, quality_score, has_watermark, usable, thumbnail_path
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                width, height, quality_score, has_watermark, usable, thumbnail_path, has_audio
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(clip_id) DO UPDATE SET
                 source_id=excluded.source_id,
                 source_path=excluded.source_path,
@@ -261,26 +254,17 @@ class MediaCatalog:
                 has_watermark=excluded.has_watermark,
                 usable=excluded.usable,
                 thumbnail_path=excluded.thumbnail_path,
+                has_audio=excluded.has_audio,
                 updated_at=CURRENT_TIMESTAMP
             """,
             (
-                payload["clip_id"],
-                payload["source_id"],
-                payload["source_path"],
-                payload["source_start"],
-                payload["source_end"],
-                payload["duration"],
-                payload["description"],
-                json.dumps(payload["tags"], ensure_ascii=False),
-                json.dumps(payload["emotions"], ensure_ascii=False),
-                payload["shot_type"],
-                payload["camera_motion"],
-                payload["width"],
-                payload["height"],
-                payload["quality_score"],
-                int(payload["has_watermark"]),
-                int(payload["usable"]),
-                payload["thumbnail_path"],
+                payload["clip_id"], payload["source_id"], payload["source_path"],
+                payload["source_start"], payload["source_end"], payload["duration"],
+                payload["description"], json.dumps(payload["tags"], ensure_ascii=False),
+                json.dumps(payload["emotions"], ensure_ascii=False), payload["shot_type"],
+                payload["camera_motion"], payload["width"], payload["height"],
+                payload["quality_score"], int(payload["has_watermark"]),
+                int(payload["usable"]), payload["thumbnail_path"], int(payload["has_audio"]),
             ),
         )
 
@@ -312,9 +296,7 @@ class MediaCatalog:
         normalized_root = Path(root).resolve()
         removed = 0
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT source_id, source_path FROM media_sources"
-            ).fetchall()
+            rows = connection.execute("SELECT source_id, source_path FROM media_sources").fetchall()
             for row in rows:
                 source_path = Path(row["source_path"])
                 try:
@@ -322,14 +304,8 @@ class MediaCatalog:
                 except (OSError, ValueError):
                     is_under_root = False
                 if is_under_root and str(source_path) not in existing_paths:
-                    connection.execute(
-                        "DELETE FROM media_clips WHERE source_id = ?",
-                        (row["source_id"],),
-                    )
-                    connection.execute(
-                        "DELETE FROM media_sources WHERE source_id = ?",
-                        (row["source_id"],),
-                    )
+                    connection.execute("DELETE FROM media_clips WHERE source_id = ?", (row["source_id"],))
+                    connection.execute("DELETE FROM media_sources WHERE source_id = ?", (row["source_id"],))
                     removed += 1
         return removed
 
@@ -386,6 +362,7 @@ def clip_from_dict(payload: dict) -> MediaClip:
         has_watermark=bool(payload.get("has_watermark", False)),
         usable=bool(payload.get("usable", True)),
         thumbnail_path=str(payload.get("thumbnail_path", "")),
+        has_audio=bool(payload.get("has_audio", False)),
     )
 
 
