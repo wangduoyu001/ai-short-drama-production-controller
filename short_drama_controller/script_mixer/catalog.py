@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS media_clips (
 );
 CREATE INDEX IF NOT EXISTS idx_media_clips_source_id ON media_clips(source_id);
 CREATE INDEX IF NOT EXISTS idx_media_clips_usable ON media_clips(usable);
-CREATE INDEX IF NOT EXISTS idx_media_clips_has_audio ON media_clips(has_audio);
 
 CREATE TABLE IF NOT EXISTS usage_history (
     project_id TEXT NOT NULL,
@@ -142,6 +141,9 @@ class MediaCatalog:
             connection.executescript(_SCHEMA)
             self._ensure_column(connection, "media_clips", "thumbnail_path", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(connection, "media_clips", "has_audio", "INTEGER NOT NULL DEFAULT 0")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_media_clips_has_audio ON media_clips(has_audio)"
+            )
 
     @staticmethod
     def _ensure_column(
