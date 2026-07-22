@@ -16,6 +16,36 @@ class DiscoveryConfig:
 
 
 @dataclass(slots=True)
+class MediaScanConfig:
+    supported_extensions: list[str] = field(
+        default_factory=lambda: [
+            ".mp4",
+            ".mov",
+            ".mkv",
+            ".avi",
+            ".webm",
+            ".m4v",
+            ".mts",
+            ".m2ts",
+        ]
+    )
+    recursive: bool = True
+    follow_symlinks: bool = False
+    minimum_source_seconds: float = 0.7
+    scene_detection_enabled: bool = True
+    scene_threshold: float = 0.34
+    minimum_scene_seconds: float = 0.7
+    maximum_scene_seconds: float = 6.0
+    fallback_window_seconds: float = 3.0
+    generate_thumbnails: bool = True
+    thumbnail_width: int = 360
+    thumbnail_root: str = ".runtime/script_mixer/thumbnails"
+    proxy_generation_enabled: bool = False
+    proxy_root: str = ".runtime/script_mixer/proxies"
+    fingerprint_sample_bytes: int = 1048576
+
+
+@dataclass(slots=True)
 class MixingRules:
     target_width: int = 1080
     target_height: int = 1920
@@ -34,6 +64,7 @@ class MixingRules:
 @dataclass(slots=True)
 class RuntimeConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
+    media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
