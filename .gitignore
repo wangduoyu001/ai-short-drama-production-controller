@@ -9,3 +9,6 @@ dist/
 build/
 *.egg-info/
 _archive/
+.runtime/
+outputs/script_mixer/
+script_mixer.local.json
