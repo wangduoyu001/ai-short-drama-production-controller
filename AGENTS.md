@@ -6,10 +6,12 @@ This repository produces a director-ready material package for AI short drama an
 
 本仓库交付的是可执行的导演物料包，不是“一键成片”演示。优先保证故事完整、资产一致、空间连续、动作可生成和返修可控。
 
+`short_drama_controller/script_mixer/` 是独立的本地信息流粗剪子系统。它可以根据用户文案和本地素材目录生成时间线及预览成片，但不得把该能力描述成已经完成短剧生成平台集成，也不得改变主生产链的输出契约。
+
 ## Working rules / 工作规则
 
-1. Preserve the user's original source file. Never silently rewrite or overwrite the input novel, script, outline, or idea.
-2. All structured field names must use `english_name 中文字段`.
+1. Preserve the user's original source file. Never silently rewrite or overwrite the input novel, script, outline, idea, narration, or media file.
+2. All structured field names must use `english_name 中文字段` in human-facing production documents. Python internal models may use stable English identifiers.
 3. Treat one episode and one generation clip as different levels:
    - `episode 单集`: normally 2-3 minutes unless the user specifies otherwise.
    - `generation_clip 生成片段`: 4-15 seconds, normally 10-15 seconds.
@@ -24,6 +26,17 @@ This repository produces a director-ready material package for AI short drama an
 11. Ask at most one consolidated clarification when a missing parameter blocks production. Otherwise use explicit defaults and record them as assumptions.
 12. Do not claim that this repository directly calls Seedance, Kling, Jimeng, Veo, Sora, or another external generation service unless an actual integration exists.
 
+## Script mixer rules / 文案混剪规则
+
+1. The user input is narration text. Convert text into timed semantic units and visual intents before searching media.
+2. Do not search only by source filename or by the untouched full sentence. Use literal queries, metaphor queries, positive tags, negative constraints, emotion, shot type, and optional vector scores.
+3. Original media is read-only. Never delete, rename, move, overwrite, or transcode in place.
+4. Do not hard-code local software, model, media, cache, or drive paths in source code. Use runtime discovery and local ignored configuration.
+5. FFmpeg, FFprobe, Ollama, Whisper, ComfyUI, embedding models, and vision models are optional adapters. Planning must remain testable without them.
+6. A 30-second timeline should target at least 8 unique source videos, prohibit adjacent same-source clips, and report any relaxed constraint.
+7. Low match scores, insufficient source diversity, missing media, watermark risk, or source-ratio violations must appear in `report.json` and must not be silently treated as final export quality.
+8. Multiple-source mixing, low textual similarity, or short clips are not proof of copyright compliance. Preserve source traceability.
+
 ## Output priorities / 输出优先级
 
 The human-readable production package should make these items easy to find:
@@ -35,6 +48,15 @@ The human-readable production package should make these items easy to find:
 5. `qa.md` - blockers, warnings, repair actions, and export permission.
 6. `exports/` - platform-ready prompts and tables.
 
+The script mixer project should make these items easy to find:
+
+1. `script_units.json` - timed narration units.
+2. `visual_intents.json` - literal, metaphor, tag, emotion, and shot requirements.
+3. `candidates.json` - candidate media and score reasons.
+4. `timeline.json` - source timecodes and final timeline positions.
+5. `report.json` - source diversity, match quality, warnings, and export state.
+6. `render_plan.json` - exact local render command.
+
 ## Code changes / 代码修改
 
 - Keep Python compatibility at 3.10 or newer.
@@ -45,7 +67,8 @@ The human-readable production package should make these items easy to find:
 pytest -q
 python scripts/v02_smoke.py
 short-drama-controller-v02 doctor
+script-driven-mixer doctor
 ```
 
 - A `BLOCKER` must prevent export.
-- New tests must be deterministic and must not require network access.
+- New tests must be deterministic and must not require network access, installed media software, real models, or private local files.
