@@ -1,0 +1,30 @@
+{
+  "discovery": {
+    "tool_overrides": {},
+    "model_overrides": {},
+    "extra_search_roots": [],
+    "max_scan_depth": 3,
+    "max_entries_per_root": 5000
+  },
+  "mixing": {
+    "target_width": 1080,
+    "target_height": 1920,
+    "fps": 30,
+    "minimum_source_count": 8,
+    "preferred_source_count": 12,
+    "max_single_source_ratio": 0.15,
+    "max_single_source_seconds": 4.0,
+    "max_continuous_clip_seconds": 3.0,
+    "minimum_clip_seconds": 0.7,
+    "source_reuse_gap": 3,
+    "low_match_threshold": 0.45,
+    "allow_missing_media_files_during_planning": true
+  },
+  "database_path": ".runtime/script_mixer/media.db",
+  "discovery_report_path": ".runtime/script_mixer/discovery.json",
+  "output_root": "outputs/script_mixer",
+  "text_model": "",
+  "vision_model": "",
+  "embedding_model": "",
+  "speech_model": ""
+}
