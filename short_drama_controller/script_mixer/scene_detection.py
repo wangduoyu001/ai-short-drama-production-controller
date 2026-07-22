@@ -110,7 +110,7 @@ def build_scene_ranges(
     boundaries.append(duration)
 
     ranges: list[tuple[float, float]] = []
-    for start, end in zip(boundaries, boundaries[1:], strict=True):
+    for start, end in zip(boundaries, boundaries[1:]):
         length = end - start
         if length <= maximum:
             ranges.append((round(start, 6), round(end, 6)))
