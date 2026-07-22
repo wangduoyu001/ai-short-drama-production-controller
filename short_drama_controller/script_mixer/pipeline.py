@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from .audio import AudioProbeError, build_audio_plan, probe_audio, resolve_audio_mode
 from .catalog import MediaCatalog
 from .config import RuntimeConfig
 from .embeddings import (
@@ -244,14 +245,61 @@ class ScriptMixerPipeline:
         self._write_json(report_path, summary.to_dict())
         return summary
 
+    def _prepare_audio(
+        self,
+        narration_path: str | Path | None,
+        requested_mode: str | None,
+        target_duration: float | None,
+        narration_duration: float | None,
+    ) -> tuple[str, str, float | None, float, list[str]]:
+        mode = resolve_audio_mode(
+            requested_mode or self.config.audio.default_mode,
+            narration_path,
+        )
+        resolved_path = ""
+        measured_duration = max(0.0, float(narration_duration or 0.0))
+        warnings: list[str] = []
+        if mode in {"narration", "mixed"}:
+            resolved_path = str(Path(str(narration_path)).expanduser().resolve())
+            if measured_duration <= 0:
+                discovery = self.doctor()
+                ffprobe = discovery.tools.get("ffprobe")
+                try:
+                    measured_duration = probe_audio(
+                        resolved_path,
+                        ffprobe.executable if ffprobe else None,
+                    ).duration
+                except (AudioProbeError, FileNotFoundError) as exc:
+                    raise RuntimeError(str(exc)) from exc
+            if target_duration and abs(target_duration - measured_duration) > 0.2:
+                warnings.append(
+                    f"Requested duration {target_duration:.3f}s was overridden by narration duration "
+                    f"{measured_duration:.3f}s"
+                )
+            effective_duration: float | None = measured_duration
+        else:
+            effective_duration = target_duration
+        return mode, resolved_path, effective_duration, measured_duration, warnings
+
     def plan(
         self,
         script_text: str,
         project_id: str | None = None,
         target_duration: float | None = None,
+        narration_path: str | Path | None = None,
+        audio_mode: str | None = None,
+        narration_duration: float | None = None,
     ) -> tuple[Timeline, Path]:
         project_id = project_id or datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:6]
-        units = build_script_units(script_text, target_duration=target_duration)
+        mode, resolved_narration, effective_duration, measured_duration, audio_warnings = (
+            self._prepare_audio(
+                narration_path=narration_path,
+                requested_mode=audio_mode,
+                target_duration=target_duration,
+                narration_duration=narration_duration,
+            )
+        )
+        units = build_script_units(script_text, target_duration=effective_duration)
         provider = self._resolve_intent_provider()
         intents = build_visual_intents(units, provider=provider)
         clips = self.catalog.list_clips(usable_only=True)
@@ -283,6 +331,15 @@ class ScriptMixerPipeline:
             candidates_by_unit=candidates_by_unit,
             rules=self.config.mixing,
         )
+        timeline.audio = build_audio_plan(
+            segments=timeline.segments,
+            duration=timeline.duration,
+            config=self.config.audio,
+            requested_mode=mode,
+            narration_path=resolved_narration or None,
+            narration_duration=measured_duration,
+        )
+        timeline.audio.warnings.extend(audio_warnings)
         project_dir = self._write_project(project_id, script_text, units, intents, timeline, candidates_by_unit)
         self.catalog.record_usage(
             project_id,
@@ -308,6 +365,7 @@ class ScriptMixerPipeline:
         timeline: Timeline,
         project_dir: str | Path,
         voice_path: str | Path | None = None,
+        audio_mode: str | None = None,
         dry_run: bool = False,
     ) -> Path:
         project_path = Path(project_dir)
@@ -319,9 +377,10 @@ class ScriptMixerPipeline:
             ffmpeg_path=ffmpeg.executable if ffmpeg else None,
             output_path=output_path,
             voice_path=voice_path,
+            audio_mode=audio_mode,
             dry_run=dry_run,
         )
-        save_render_plan(command, project_path / "render_plan.json")
+        save_render_plan(command, project_path / "render_plan.json", timeline.audio)
         return output_path
 
     def _write_project(
@@ -373,6 +432,13 @@ class ScriptMixerPipeline:
             blocking_warnings.append(
                 f"unique source count {len(source_seconds)} is below required {self.config.mixing.minimum_source_count}"
             )
+        audio_blockers: list[str] = []
+        if timeline.audio.mode == "source" and timeline.audio.source_audio_coverage < 0.5:
+            audio_blockers.append(
+                f"source audio coverage {timeline.audio.source_audio_coverage:.1%} is below 50%"
+            )
+        if timeline.audio.mode in {"narration", "mixed"} and timeline.audio.narration_duration <= 0:
+            audio_blockers.append("narration duration is unavailable")
         return {
             "project_id": timeline.project_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -383,8 +449,10 @@ class ScriptMixerPipeline:
             "highest_single_source_ratio": round(highest_source_ratio, 4),
             "source_seconds": {key: round(value, 3) for key, value in source_seconds.items()},
             "low_match_segments": low_match_segments,
-            "warnings": list(dict.fromkeys(blocking_warnings)),
-            "allow_final_export": not blocking_warnings and not low_match_segments,
+            "audio": asdict(timeline.audio),
+            "audio_blockers": audio_blockers,
+            "warnings": list(dict.fromkeys([*blocking_warnings, *timeline.audio.warnings])),
+            "allow_final_export": not blocking_warnings and not low_match_segments and not audio_blockers,
         }
 
     @staticmethod
