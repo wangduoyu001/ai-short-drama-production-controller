@@ -43,7 +43,10 @@ def discover_media_files(root: str | Path, config: MediaScanConfig) -> list[Path
     base = Path(root).expanduser().resolve()
     if not base.is_dir():
         raise NotADirectoryError(f"Media root is not a directory: {base}")
-    supported = {item.casefold() if item.startswith(".") else f".{item.casefold()}" for item in config.supported_extensions}
+    supported = {
+        item.casefold() if item.startswith(".") else f".{item.casefold()}"
+        for item in config.supported_extensions
+    }
     iterator: Iterable[Path] = base.rglob("*") if config.recursive else base.glob("*")
     files: list[Path] = []
     for path in iterator:
@@ -144,7 +147,13 @@ class MediaScanner:
                 continue
 
             existing = self.catalog.get_source_by_path(path)
-            if existing and existing.fingerprint == fingerprint and not force:
+            needs_upgrade = bool(
+                existing
+                and existing.status in {"fast", "metadata_only"}
+                and not fast
+                and self.ffmpeg_path
+            )
+            if existing and existing.fingerprint == fingerprint and not force and not needs_upgrade:
                 summary.unchanged_files += 1
                 continue
             if existing:
@@ -249,8 +258,17 @@ class MediaScanner:
                     )
                 )
 
-            source.status = "ready"
-            source.error = f"scene detection fallback: {detection_error}" if detection_error else ""
+            if fast:
+                source.status = "fast"
+                source.error = "fast scan: fixed-window clips without scene detection or thumbnails"
+            elif not self.ffmpeg_path and (
+                self.config.scene_detection_enabled or self.config.generate_thumbnails
+            ):
+                source.status = "metadata_only"
+                source.error = "ffmpeg unavailable: fixed-window clips without thumbnails"
+            else:
+                source.status = "ready"
+                source.error = f"scene detection fallback: {detection_error}" if detection_error else ""
             written = self.catalog.replace_source_clips(source, clips)
             summary.sources_written += 1
             summary.clips_written += written
