@@ -44,9 +44,18 @@ jobs:
 
       - name: Run script mixer tests
         run: |
-          pytest -q tests/test_script_mixer*.py
+          pytest -q tests/test_script_mixer*.py \
+            --junitxml=script-mixer-junit-${{ matrix.python-version }}.xml
 
       - name: Verify CLI imports
         run: |
           script-driven-mixer --help
           python -m short_drama_controller.script_mixer.cli --help
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: script-mixer-junit-${{ matrix.python-version }}
+          path: script-mixer-junit-${{ matrix.python-version }}.xml
+          if-no-files-found: warn
