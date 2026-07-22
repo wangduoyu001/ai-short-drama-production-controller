@@ -1,8 +1,18 @@
 # AI Short Drama Production Controller / AI短剧生产控制器
 
-版本：`0.5.0`
+版本：`0.6.0`
 
 面向 AI 短剧与 AI 漫剧生产的流程控制器和 Codex Skill。它不是“一键生成短剧”的玄学按钮，而是把小说、剧本、口述创意或半成品 Prompt / 生成提示词，整理成导演可用的标准化生产物料包。
+
+## v0.6 更新
+
+- 新增独立的文案驱动本地混剪模块：`short_drama_controller/script_mixer/`
+- 新增 `script-driven-mixer` 命令行入口
+- 支持运行时自动发现 FFmpeg、FFprobe、Ollama、Whisper、ComfyUI 模型目录和常见模型缓存
+- 软件和模型路径默认留空，不向仓库写入本机绝对路径
+- 支持文案拆分、画面意图生成、SQLite 素材目录、混合检索、多来源时间线和 FFmpeg 渲染计划
+- 新增混剪来源占比、相邻同源、历史使用和低匹配报告
+- 完整开发契约见 `docs/script-driven-mixer.md`
 
 ## v0.5 更新
 
@@ -27,6 +37,8 @@
 7. QA 报告与可导出物料
 
 它不会凭空替你调用 Seedance、即梦、可灵、Veo 或其他外部平台，也不会声称已经生成最终成片。平台和模型是否接入，以仓库中是否存在真实集成代码为准。
+
+文案驱动混剪是独立的本地粗剪子系统。它只在本地素材目录和实际已发现的软件条件下生成信息流时间线或预览成片，不代表主短剧生产链已接入外部生成平台。
 
 ## 核心生产层级
 
@@ -72,15 +84,29 @@ Skill 默认关闭隐式调用，因此必须明确选择或输入 `$ai-short-dr
 ```bash
 python -m pip install -e .
 short-drama-controller-v02 doctor
+script-driven-mixer doctor
 ```
 
-`doctor` 会检查：
+`short-drama-controller-v02 doctor` 会检查：
 
 - Python 版本
 - CLI 主入口模块
 - 根目录 `AGENTS.md`
 - Codex Skill 的 YAML frontmatter
 - `agents/openai.yaml` 元数据
+
+`script-driven-mixer doctor` 会检查和记录：
+
+- FFmpeg 与 FFprobe
+- Ollama
+- Whisper CLI
+- Python、Git、NVIDIA SMI
+- Ollama 模型目录
+- Hugging Face 缓存
+- Whisper 模型缓存
+- ComfyUI 模型目录
+
+扫描结果写入本地忽略目录 `.runtime/script_mixer/discovery.json`。任何自动发现失败的路径，都应通过本地配置覆盖，不得提交到 Git。
 
 ## 主入口
 
@@ -111,6 +137,51 @@ python -m short_drama_controller.v02_full_cli repair --project demo_v02
 python -m short_drama_controller.v02_full_cli export --project demo_v02
 python -m short_drama_controller.v02_full_cli grid --project demo_v02 --shot SH005
 ```
+
+## 文案驱动本地混剪
+
+模块入口：
+
+```text
+short_drama_controller.script_mixer.cli:main
+```
+
+第一次拉取到实际电脑后：
+
+```bash
+python -m pip install -e .
+script-driven-mixer init-config --out script_mixer.local.json
+script-driven-mixer --config script_mixer.local.json doctor
+script-driven-mixer --config script_mixer.local.json init-db
+```
+
+导入临时镜头清单：
+
+```bash
+script-driven-mixer --config script_mixer.local.json import-manifest --manifest clips.json
+```
+
+根据文案生成30秒时间线：
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --duration 30 \
+  --project-id demo_001
+```
+
+生成 FFmpeg 命令但不执行：
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --duration 30 \
+  --project-id demo_001 \
+  --render \
+  --dry-run
+```
+
+当前模块已经完成文案语义单元、画面意图、素材目录、基础召回、多来源时间线和渲染命令。自动镜头切分、视觉描述、向量模型、Whisper、TTS 和人工审片面板按 `docs/script-driven-mixer.md` 的阶段继续开发。
 
 ## 主流程结构
 
@@ -200,6 +271,16 @@ warning_count 警告问题数
 - 单次定向返修只改变一个主要变量
 - 高风险镜头必须保留备用镜头
 
+混剪模块的 `report.json` 必须记录：
+
+```text
+unique_source_count 唯一来源数量
+highest_single_source_ratio 最高单来源占比
+low_match_segments 低匹配镜头
+warnings 规则放宽和风险
+allow_final_export 是否允许正式导出
+```
+
 ## 项目输出
 
 ```text
@@ -244,6 +325,21 @@ demo_v02/
 exports/video_prompts.md
 ```
 
+混剪项目输出：
+
+```text
+outputs/script_mixer/<project_id>/
+├─ script.txt
+├─ script_units.json
+├─ visual_intents.json
+├─ candidates.json
+├─ timeline.json
+├─ report.json
+├─ render_plan.json
+└─ exports/
+   └─ final.mp4
+```
+
 ## Codex Skill 目录
 
 ```text
@@ -268,10 +364,13 @@ exports/video_prompts.md
 pytest -q
 python scripts/v02_smoke.py
 short-drama-controller-v02 doctor
+script-driven-mixer doctor
 ```
 
-测试不得依赖网络。Smoke test 默认使用临时目录；传入 `--out` 时写入指定目录，不删除仓库固定目录。
+测试不得依赖网络。Smoke test 默认使用临时目录；传入 `--out` 时写入指定目录，不删除仓库固定目录。混剪核心测试不得要求本机安装 FFmpeg 或模型。
 
 ## 版权安全
 
 参考影视作品时，只学习结构、节奏、镜头逻辑、角色功能和可复用的生产模式。不要复制原作的角色名称、完整对白、具体情节、身份设定或世界观。
+
+多来源混剪、低文本相似度、短镜头和关闭原声都不等于获得版权授权。素材来源、授权状态和最终发布责任必须保留人工审核。
