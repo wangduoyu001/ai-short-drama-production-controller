@@ -157,7 +157,15 @@ class OllamaClient:
                 candidates.append(model)
         if not candidates:
             return None
-        candidates.sort(key=lambda item: self._name_priority(item.name, capability))
+        if capability == "completion":
+            candidates.sort(
+                key=lambda item: (
+                    item.supports("vision"),
+                    *self._name_priority(item.name, capability),
+                )
+            )
+        else:
+            candidates.sort(key=lambda item: self._name_priority(item.name, capability))
         return candidates[0]
 
     def generate(
@@ -253,7 +261,7 @@ def _string_list(payload: dict[str, Any], key: str, limit: int = 12) -> list[str
     return list(dict.fromkeys(result))[:limit]
 
 
-class OllamaIntentProvider(IntentProvider):
+class OllamaIntentProvider:
     def __init__(
         self,
         client: OllamaClient,
