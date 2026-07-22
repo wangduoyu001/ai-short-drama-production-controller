@@ -10,10 +10,11 @@ from .catalog import MediaCatalog
 from .config import RuntimeConfig
 from .environment import discover_environment, save_discovery_report
 from .intent import IntentProvider, build_visual_intents
-from .models import DiscoveryReport, ScriptUnit, Timeline, VisualIntent
+from .models import DiscoveryReport, MediaScanSummary, ScriptUnit, Timeline, VisualIntent
 from .planner import plan_timeline
 from .render import render_timeline, save_render_plan
 from .retrieval import HybridRetriever, VectorSearchProvider
+from .scanner import MediaScanner
 from .script_parser import build_script_units
 
 
@@ -35,6 +36,32 @@ class ScriptMixerPipeline:
         save_discovery_report(report, self.config.discovery_report_path)
         return report
 
+    def scan_media(
+        self,
+        root: str | Path,
+        fast: bool = False,
+        force: bool = False,
+        prune_missing: bool = False,
+    ) -> MediaScanSummary:
+        discovery = self.doctor()
+        ffprobe = discovery.tools.get("ffprobe")
+        ffmpeg = discovery.tools.get("ffmpeg")
+        scanner = MediaScanner(
+            catalog=self.catalog,
+            config=self.config.media_scan,
+            ffprobe_path=ffprobe.executable if ffprobe else None,
+            ffmpeg_path=ffmpeg.executable if ffmpeg else None,
+        )
+        summary = scanner.scan(
+            root=root,
+            fast=fast,
+            force=force,
+            prune_missing=prune_missing,
+        )
+        report_path = Path(self.config.database_path).parent / "last_scan.json"
+        self._write_json(report_path, summary.to_dict())
+        return summary
+
     def plan(
         self,
         script_text: str,
@@ -47,7 +74,7 @@ class ScriptMixerPipeline:
         clips = self.catalog.list_clips(usable_only=True)
         if not clips:
             raise RuntimeError(
-                "Media catalog is empty. Import a clip manifest or run a future analyzer adapter first."
+                "Media catalog is empty. Run scan-media on a local media directory or import a clip manifest."
             )
 
         if not self.config.mixing.allow_missing_media_files_during_planning:
@@ -146,30 +173,37 @@ class ScriptMixerPipeline:
         self._write_json(project_dir / "report.json", self._build_report(timeline))
         return project_dir
 
-    @staticmethod
-    def _build_report(timeline: Timeline) -> dict:
+    def _build_report(self, timeline: Timeline) -> dict:
         source_seconds: dict[str, float] = {}
         low_match_segments: list[str] = []
         for segment in timeline.segments:
             source_seconds[segment.source_id] = source_seconds.get(segment.source_id, 0.0) + segment.duration
-            if segment.match_score < 0.45:
+            if segment.match_score < self.config.mixing.low_match_threshold:
                 low_match_segments.append(segment.segment_id)
         highest_source_ratio = (
             max(source_seconds.values()) / timeline.duration if source_seconds and timeline.duration else 0.0
         )
+        required_sources_met = len(source_seconds) >= self.config.mixing.minimum_source_count
+        blocking_warnings = list(timeline.warnings)
+        if not required_sources_met:
+            blocking_warnings.append(
+                f"unique source count {len(source_seconds)} is below required {self.config.mixing.minimum_source_count}"
+            )
         return {
             "project_id": timeline.project_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "duration": timeline.duration,
             "segment_count": len(timeline.segments),
             "unique_source_count": len(source_seconds),
+            "required_source_count": self.config.mixing.minimum_source_count,
             "highest_single_source_ratio": round(highest_source_ratio, 4),
             "source_seconds": {key: round(value, 3) for key, value in source_seconds.items()},
             "low_match_segments": low_match_segments,
-            "warnings": timeline.warnings,
-            "allow_final_export": not timeline.warnings and not low_match_segments,
+            "warnings": list(dict.fromkeys(blocking_warnings)),
+            "allow_final_export": not blocking_warnings and not low_match_segments,
         }
 
     @staticmethod
     def _write_json(path: Path, payload) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
