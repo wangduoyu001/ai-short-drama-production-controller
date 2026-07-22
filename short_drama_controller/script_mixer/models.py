@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(slots=True)
+class ToolLocation:
+    name: str
+    executable: str | None = None
+    source: str = "not_found"
+    version: str | None = None
+
+    @property
+    def available(self) -> bool:
+        return bool(self.executable)
+
+
+@dataclass(slots=True)
+class ModelLocation:
+    name: str
+    path: str | None = None
+    source: str = "not_found"
+    model_type: str = "unknown"
+
+    @property
+    def available(self) -> bool:
+        return bool(self.path)
+
+
+@dataclass(slots=True)
+class DiscoveryReport:
+    platform: str
+    generated_at: str
+    tools: dict[str, ToolLocation] = field(default_factory=dict)
+    models: dict[str, list[ModelLocation]] = field(default_factory=dict)
+    searched_roots: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "platform": self.platform,
+            "generated_at": self.generated_at,
+            "tools": {name: asdict(item) | {"available": item.available} for name, item in self.tools.items()},
+            "models": {
+                name: [asdict(item) | {"available": item.available} for item in items]
+                for name, items in self.models.items()
+            },
+            "searched_roots": self.searched_roots,
+            "warnings": self.warnings,
+        }
+
+
+@dataclass(slots=True)
+class ScriptUnit:
+    unit_id: str
+    text: str
+    start: float
+    end: float
+    duration: float
+    role: str = "body"
+    importance: float = 0.5
+
+
+@dataclass(slots=True)
+class VisualIntent:
+    unit_id: str
+    literal_queries: list[str]
+    metaphor_queries: list[str]
+    positive_tags: list[str]
+    negative_tags: list[str]
+    emotion: list[str]
+    preferred_shots: list[str]
+
+    @property
+    def all_queries(self) -> list[str]:
+        return [*self.literal_queries, *self.metaphor_queries, *self.positive_tags]
+
+
+@dataclass(slots=True)
+class MediaClip:
+    clip_id: str
+    source_id: str
+    source_path: str
+    source_start: float
+    source_end: float
+    duration: float
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+    emotions: list[str] = field(default_factory=list)
+    shot_type: str = "unknown"
+    camera_motion: str = "unknown"
+    width: int = 0
+    height: int = 0
+    quality_score: float = 0.5
+    has_watermark: bool = False
+    usable: bool = True
+
+    @property
+    def is_vertical(self) -> bool:
+        return self.height > self.width > 0
+
+    def validate_source(self) -> bool:
+        return Path(self.source_path).exists()
+
+
+@dataclass(slots=True)
+class CandidateClip:
+    clip: MediaClip
+    score: float
+    reasons: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class TimelineSegment:
+    segment_id: str
+    unit_id: str
+    timeline_start: float
+    timeline_end: float
+    source_id: str
+    source_path: str
+    source_start: float
+    source_end: float
+    match_score: float
+    crop_mode: str = "center_crop"
+    speed: float = 1.0
+    audio_enabled: bool = False
+    match_reasons: list[str] = field(default_factory=list)
+
+    @property
+    def duration(self) -> float:
+        return round(self.timeline_end - self.timeline_start, 3)
+
+
+@dataclass(slots=True)
+class Timeline:
+    project_id: str
+    width: int
+    height: int
+    fps: int
+    duration: float
+    segments: list[TimelineSegment]
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "project_id": self.project_id,
+            "width": self.width,
+            "height": self.height,
+            "fps": self.fps,
+            "duration": self.duration,
+            "segments": [asdict(item) | {"duration": item.duration} for item in self.segments],
+            "warnings": self.warnings,
+        }
