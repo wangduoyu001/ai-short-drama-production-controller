@@ -122,7 +122,23 @@ class OllamaClient:
     def _name_priority(name: str, capability: str) -> tuple[int, str]:
         lowered = name.casefold()
         if capability == "vision":
-            patterns = ("qwen3-vl", "qwen2.5-vl", "qwen2-vl", "gemma", "minicpm-v", "llava")
+            patterns = (
+                "qwen3-vl",
+                "qwen2.5-vl",
+                "qwen2-vl",
+                "gemma",
+                "minicpm-v",
+                "llava",
+            )
+        elif capability == "embedding":
+            patterns = (
+                "qwen3-embedding",
+                "embeddinggemma",
+                "bge-m3",
+                "nomic-embed-text",
+                "mxbai-embed-large",
+                "all-minilm",
+            )
         else:
             patterns = ("qwen3", "qwen2.5", "glm", "gemma", "llama", "mistral")
         for index, pattern in enumerate(patterns):
@@ -202,6 +218,41 @@ class OllamaClient:
             raise OllamaError("Ollama structured output root must be an object")
         return parsed
 
+    def embed(
+        self,
+        model: str,
+        inputs: list[str] | str,
+        truncate: bool = True,
+        dimensions: int | None = None,
+        timeout: float | None = None,
+    ) -> list[list[float]]:
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": inputs,
+            "truncate": truncate,
+        }
+        if dimensions is not None:
+            payload["dimensions"] = dimensions
+        response = self._request("POST", "/api/embed", payload, timeout=timeout)
+        raw_vectors = response.get("embeddings")
+        if not isinstance(raw_vectors, list):
+            raise OllamaError("Ollama embed response does not contain embeddings")
+        vectors: list[list[float]] = []
+        for index, raw in enumerate(raw_vectors):
+            if not isinstance(raw, list) or not raw:
+                raise OllamaError(f"Ollama returned an invalid embedding at index {index}")
+            try:
+                vector = [float(value) for value in raw]
+            except (TypeError, ValueError) as exc:
+                raise OllamaError(f"Ollama embedding contains non-numeric data at index {index}") from exc
+            vectors.append(vector)
+        expected = 1 if isinstance(inputs, str) else len(inputs)
+        if len(vectors) != expected:
+            raise OllamaError(
+                f"Ollama returned {len(vectors)} embeddings for {expected} inputs"
+            )
+        return vectors
+
 
 _INTENT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -261,7 +312,7 @@ def _string_list(payload: dict[str, Any], key: str, limit: int = 12) -> list[str
     return list(dict.fromkeys(result))[:limit]
 
 
-class OllamaIntentProvider:
+class OllamaIntentProvider(IntentProvider):
     def __init__(
         self,
         client: OllamaClient,
