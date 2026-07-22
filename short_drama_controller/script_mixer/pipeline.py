@@ -8,9 +8,16 @@ from uuid import uuid4
 
 from .catalog import MediaCatalog
 from .config import RuntimeConfig
+from .enrichment import EnrichmentSummary, MediaEnricher
 from .environment import discover_environment, save_discovery_report
 from .intent import IntentProvider, build_visual_intents
 from .models import DiscoveryReport, MediaScanSummary, ScriptUnit, Timeline, VisualIntent
+from .ollama_adapter import (
+    OllamaClient,
+    OllamaError,
+    OllamaIntentProvider,
+    OllamaVisionProvider,
+)
 from .planner import plan_timeline
 from .render import render_timeline, save_render_plan
 from .retrieval import HybridRetriever, VectorSearchProvider
@@ -30,11 +37,98 @@ class ScriptMixerPipeline:
         self.retriever = HybridRetriever(vector_provider=vector_provider)
         self.catalog = MediaCatalog(self.config.database_path)
         self.catalog.initialize()
+        self._ollama_client: OllamaClient | None = None
+        self._model_resolution_attempted = False
 
     def doctor(self) -> DiscoveryReport:
         report = discover_environment(self.config.discovery)
         save_discovery_report(report, self.config.discovery_report_path)
         return report
+
+    def _get_ollama_client(self) -> OllamaClient | None:
+        if self._ollama_client is not None:
+            return self._ollama_client
+        settings = self.config.local_models
+        if not settings.auto_select_ollama_models and not (
+            settings.text_model or settings.vision_model or settings.embedding_model
+        ):
+            return None
+        client = OllamaClient(
+            base_url=settings.ollama_base_url,
+            timeout=settings.ollama_timeout_seconds,
+        )
+        if not client.is_available():
+            return None
+        self._ollama_client = client
+        return client
+
+    def model_status(self) -> dict:
+        settings = self.config.local_models
+        client = self._get_ollama_client()
+        result = {
+            "base_url": settings.ollama_base_url,
+            "available": client is not None,
+            "configured": {
+                "text_model": settings.text_model,
+                "vision_model": settings.vision_model,
+                "embedding_model": settings.embedding_model,
+                "speech_model": settings.speech_model,
+            },
+            "installed_models": [],
+            "selected": {
+                "text_model": "",
+                "vision_model": "",
+            },
+            "errors": [],
+        }
+        if client is None:
+            return result
+        try:
+            names = client.list_model_names()
+            installed: list[dict] = []
+            for name in names:
+                try:
+                    model = client.show_model(name)
+                    installed.append(
+                        {
+                            "name": model.name,
+                            "capabilities": model.capabilities,
+                            "family": model.family,
+                            "parameter_size": model.parameter_size,
+                            "quantization_level": model.quantization_level,
+                        }
+                    )
+                except OllamaError as exc:
+                    result["errors"].append(f"{name}: {exc}")
+            result["installed_models"] = installed
+            text = client.select_model("completion", settings.text_model)
+            vision = client.select_model("vision", settings.vision_model)
+            result["selected"]["text_model"] = text.name if text else ""
+            result["selected"]["vision_model"] = vision.name if vision else ""
+        except OllamaError as exc:
+            result["errors"].append(str(exc))
+        return result
+
+    def _resolve_intent_provider(self) -> IntentProvider | None:
+        if self.intent_provider is not None:
+            return self.intent_provider
+        if self._model_resolution_attempted:
+            return None
+        self._model_resolution_attempted = True
+        client = self._get_ollama_client()
+        if client is None:
+            return None
+        try:
+            model = client.select_model(
+                capability="completion",
+                preferred=self.config.local_models.text_model,
+            )
+        except OllamaError:
+            return None
+        if model is None:
+            return None
+        self.intent_provider = OllamaIntentProvider(client=client, model=model.name)
+        return self.intent_provider
 
     def scan_media(
         self,
@@ -62,6 +156,29 @@ class ScriptMixerPipeline:
         self._write_json(report_path, summary.to_dict())
         return summary
 
+    def enrich_media(
+        self,
+        limit: int | None = None,
+        force: bool = False,
+    ) -> EnrichmentSummary:
+        client = self._get_ollama_client()
+        if client is None:
+            raise RuntimeError("Ollama is unavailable; run models and verify the local service")
+        try:
+            model = client.select_model(
+                capability="vision",
+                preferred=self.config.local_models.vision_model,
+            )
+        except OllamaError as exc:
+            raise RuntimeError(str(exc)) from exc
+        if model is None:
+            raise RuntimeError("No installed Ollama model reports the vision capability")
+        provider = OllamaVisionProvider(client=client, model=model.name)
+        summary = MediaEnricher(self.catalog, provider).enrich(limit=limit, force=force)
+        report_path = Path(self.config.database_path).parent / "last_enrichment.json"
+        self._write_json(report_path, summary.to_dict())
+        return summary
+
     def plan(
         self,
         script_text: str,
@@ -70,7 +187,8 @@ class ScriptMixerPipeline:
     ) -> tuple[Timeline, Path]:
         project_id = project_id or datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:6]
         units = build_script_units(script_text, target_duration=target_duration)
-        intents = build_visual_intents(units, provider=self.intent_provider)
+        provider = self._resolve_intent_provider()
+        intents = build_visual_intents(units, provider=provider)
         clips = self.catalog.list_clips(usable_only=True)
         if not clips:
             raise RuntimeError(
