@@ -27,12 +27,7 @@ def _overlap_score(left: set[str], right: set[str]) -> float:
 
 
 class HybridRetriever:
-    """Dependency-free lexical retriever with optional vector score injection.
-
-    The lexical layer keeps the pipeline functional before embedding and vision
-    models are configured. A real vector provider can be added without changing
-    the planner contract.
-    """
+    """Lexical, structured metadata and optional vector semantic retriever."""
 
     def __init__(self, vector_provider: VectorSearchProvider | None = None):
         self.vector_provider = vector_provider
@@ -55,15 +50,26 @@ class HybridRetriever:
         emotion_match = _overlap_score(_tokens(" ".join(intent.emotion)), emotion_tokens)
         shot_match = _overlap_score(shot_tokens, _tokens(clip.shot_type))
         vector_score = self.vector_provider.score(intent, clip) if self.vector_provider else 0.0
+        quality = max(0.0, min(1.0, clip.quality_score))
 
-        score = (
-            semantic * 0.38
-            + tag_match * 0.18
-            + emotion_match * 0.12
-            + shot_match * 0.07
-            + max(0.0, min(1.0, clip.quality_score)) * 0.15
-            + max(0.0, min(1.0, vector_score)) * 0.10
-        )
+        if self.vector_provider is not None and vector_score > 0:
+            score = (
+                semantic * 0.24
+                + tag_match * 0.12
+                + emotion_match * 0.09
+                + shot_match * 0.05
+                + quality * 0.12
+                + max(0.0, min(1.0, vector_score)) * 0.38
+            )
+        else:
+            score = (
+                semantic * 0.43
+                + tag_match * 0.20
+                + emotion_match * 0.13
+                + shot_match * 0.08
+                + quality * 0.16
+            )
+
         reasons: list[str] = []
         if semantic > 0:
             reasons.append(f"semantic={semantic:.2f}")
@@ -86,7 +92,10 @@ class HybridRetriever:
             penalty = min(0.30, usage_count * 0.025)
             score -= penalty
             reasons.append(f"history_penalty={penalty:.2f}")
-        negative_overlap = _overlap_score(negative_tokens, description_tokens | tag_tokens | emotion_tokens)
+        negative_overlap = _overlap_score(
+            negative_tokens,
+            description_tokens | tag_tokens | emotion_tokens,
+        )
         if negative_overlap:
             score -= negative_overlap * 0.45
             reasons.append(f"negative_penalty={negative_overlap:.2f}")
@@ -94,7 +103,11 @@ class HybridRetriever:
             score -= 0.02
             reasons.append("horizontal_crop_needed")
 
-        return CandidateClip(clip=clip, score=round(max(-1.0, min(1.0, score)), 4), reasons=reasons)
+        return CandidateClip(
+            clip=clip,
+            score=round(max(-1.0, min(1.0, score)), 4),
+            reasons=reasons,
+        )
 
     def retrieve(
         self,
@@ -109,5 +122,8 @@ class HybridRetriever:
             for clip in clips
             if clip.usable and not clip.has_watermark
         ]
-        candidates.sort(key=lambda item: (item.score, item.clip.quality_score), reverse=True)
+        candidates.sort(
+            key=lambda item: (item.score, item.clip.quality_score),
+            reverse=True,
+        )
         return candidates[:limit]
