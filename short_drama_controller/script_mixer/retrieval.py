@@ -29,8 +29,13 @@ def _overlap_score(left: set[str], right: set[str]) -> float:
 class HybridRetriever:
     """Lexical, structured metadata and optional vector semantic retriever."""
 
-    def __init__(self, vector_provider: VectorSearchProvider | None = None):
+    def __init__(
+        self,
+        vector_provider: VectorSearchProvider | None = None,
+        prefer_source_audio: bool = False,
+    ):
         self.vector_provider = vector_provider
+        self.prefer_source_audio = prefer_source_audio
 
     def score_clip(
         self,
@@ -81,6 +86,9 @@ class HybridRetriever:
             reasons.append(f"shot={shot_match:.2f}")
         if vector_score > 0:
             reasons.append(f"vector={vector_score:.2f}")
+        if self.prefer_source_audio and clip.has_audio:
+            score += 0.06
+            reasons.append("source_audio_bonus=0.06")
 
         if clip.has_watermark:
             score -= 0.35
