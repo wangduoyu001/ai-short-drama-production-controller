@@ -85,6 +85,8 @@ def content_hash(text: str) -> str:
 def _pack_vector(vector: list[float]) -> bytes:
     if not vector:
         raise ValueError("Embedding vector is empty")
+    if any(not math.isfinite(value) for value in vector):
+        raise ValueError("Embedding vector contains a non-finite value")
     raw = struct.pack(f"<{len(vector)}f", *vector)
     return zlib.compress(raw, level=6)
 
@@ -321,4 +323,4 @@ class OllamaVectorSearchProvider(VectorSearchProvider):
         if vector is None:
             return 0.0
         similarity = cosine_similarity(query, vector)
-        return max(0.0, min(1.0, (similarity + 1.0) / 2.0))
+        return max(0.0, min(1.0, similarity))
