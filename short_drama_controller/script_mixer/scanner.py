@@ -255,6 +255,7 @@ class MediaScanner:
                         quality_score=_quality_score(source),
                         usable=True,
                         thumbnail_path=thumbnail_path,
+                        has_audio=source.has_audio,
                     )
                 )
 
