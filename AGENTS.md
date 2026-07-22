@@ -33,9 +33,14 @@ This repository produces a director-ready material package for AI short drama an
 3. Original media is read-only. Never delete, rename, move, overwrite, or transcode in place.
 4. Do not hard-code local software, model, media, cache, or drive paths in source code. Use runtime discovery and local ignored configuration.
 5. FFmpeg, FFprobe, Ollama, Whisper, ComfyUI, embedding models, and vision models are optional adapters. Planning must remain testable without them.
-6. A 30-second timeline should target at least 8 unique source videos, prohibit adjacent same-source clips, and report any relaxed constraint.
-7. Low match scores, insufficient source diversity, missing media, watermark risk, or source-ratio violations must appear in `report.json` and must not be silently treated as final export quality.
-8. Multiple-source mixing, low textual similarity, or short clips are not proof of copyright compliance. Preserve source traceability.
+6. The normal material preparation order is:
+   `scan-media -> enrich-media -> build-embeddings -> plan -> render`.
+7. `scan-media --fast` may create provisional fixed-window clips. A later normal scan must upgrade `fast` or `metadata_only` records without requiring the source file to change.
+8. Vision analysis must describe visible facts. It must not infer a person's real identity or invent content from the filename.
+9. Embeddings must use the same model for indexing and querying. Cache by clip, model, and content hash; do not rebuild unchanged vectors during `plan`.
+10. A 30-second timeline should target at least 8 unique source videos, prohibit adjacent same-source clips, and report any relaxed constraint.
+11. Low match scores, insufficient source diversity, missing media, watermark risk, or source-ratio violations must appear in `report.json` and must not be silently treated as final export quality.
+12. Multiple-source mixing, low textual similarity, short clips, or vector similarity are not proof of copyright compliance. Preserve source traceability.
 
 ## Output priorities / 输出优先级
 
@@ -56,6 +61,14 @@ The script mixer project should make these items easy to find:
 4. `timeline.json` - source timecodes and final timeline positions.
 5. `report.json` - source diversity, match quality, warnings, and export state.
 6. `render_plan.json` - exact local render command.
+
+Runtime catalog reports should remain in `.runtime/script_mixer/`:
+
+1. `discovery.json`
+2. `last_scan.json`
+3. `last_enrichment.json`
+4. `last_embeddings.json`
+5. `media.db`
 
 ## Code changes / 代码修改
 
