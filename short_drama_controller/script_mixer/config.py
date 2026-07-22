@@ -46,6 +46,17 @@ class MediaScanConfig:
 
 
 @dataclass(slots=True)
+class LocalModelConfig:
+    auto_select_ollama_models: bool = True
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_timeout_seconds: float = 90.0
+    text_model: str = ""
+    vision_model: str = ""
+    embedding_model: str = ""
+    speech_model: str = ""
+
+
+@dataclass(slots=True)
 class MixingRules:
     target_width: int = 1080
     target_height: int = 1920
@@ -65,21 +76,38 @@ class MixingRules:
 class RuntimeConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
+    local_models: LocalModelConfig = field(default_factory=LocalModelConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
     output_root: str = "outputs/script_mixer"
-    text_model: str = ""
-    vision_model: str = ""
-    embedding_model: str = ""
-    speech_model: str = ""
+
+    @property
+    def text_model(self) -> str:
+        return self.local_models.text_model
+
+    @property
+    def vision_model(self) -> str:
+        return self.local_models.vision_model
+
+    @property
+    def embedding_model(self) -> str:
+        return self.local_models.embedding_model
+
+    @property
+    def speech_model(self) -> str:
+        return self.local_models.speech_model
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 def _merge_dataclass(instance: Any, values: dict[str, Any]) -> Any:
+    legacy_model_keys = {"text_model", "vision_model", "embedding_model", "speech_model"}
     for key, value in values.items():
+        if key in legacy_model_keys and hasattr(instance, "local_models"):
+            setattr(instance.local_models, key, value)
+            continue
         if not hasattr(instance, key):
             continue
         current = getattr(instance, key)
