@@ -28,6 +28,11 @@ class FakeModelClient(OllamaClient):
                 capabilities=["completion", "vision"],
                 family="qwen3vl",
             ),
+            "qwen3-embedding:0.6b": OllamaModel(
+                name="qwen3-embedding:0.6b",
+                capabilities=["embedding"],
+                family="qwen3embedding",
+            ),
         }
 
     def list_model_names(self) -> list[str]:
@@ -66,10 +71,13 @@ def test_model_selection_uses_capabilities() -> None:
     client = FakeModelClient()
     text = client.select_model("completion")
     vision = client.select_model("vision")
+    embedding = client.select_model("embedding")
     assert text is not None
     assert vision is not None
+    assert embedding is not None
     assert text.name == "qwen3:8b"
     assert vision.name == "qwen3-vl:8b"
+    assert embedding.name == "qwen3-embedding:0.6b"
 
 
 def test_ollama_intent_provider_returns_visual_intent() -> None:
