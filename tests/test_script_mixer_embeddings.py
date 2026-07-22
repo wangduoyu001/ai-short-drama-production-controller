@@ -112,8 +112,8 @@ def test_embedding_indexer_is_incremental(tmp_path: Path) -> None:
 
 
 def test_vector_provider_changes_hybrid_ranking(tmp_path: Path) -> None:
-    office = _clip("C001", "人物在房间里", ["普通画面"])
-    city = _clip("C002", "城市街道", ["城市"])
+    office = _clip("C001", "人物伏案处理文件并操作电脑", ["室内", "办公"])
+    city = _clip("C002", "城市街道车辆行驶", ["城市", "街道"])
     catalog = MediaCatalog(tmp_path / "media.db")
     catalog.initialize()
     catalog.upsert_many([office, city])
