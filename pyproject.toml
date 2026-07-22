@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-short-drama-production-controller"
-version = "0.5.0"
+version = "0.6.0"
 description = "AI Short Drama Production Controller / AI短剧生产控制器"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ dependencies = []
 [project.scripts]
 short-drama-controller = "short_drama_controller.cli:main"
 short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"
+script-driven-mixer = "short_drama_controller.script_mixer.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["short_drama_controller*"]
