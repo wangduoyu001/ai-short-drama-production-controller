@@ -32,6 +32,15 @@
     "proxy_root": ".runtime/script_mixer/proxies",
     "fingerprint_sample_bytes": 1048576
   },
+  "local_models": {
+    "auto_select_ollama_models": true,
+    "ollama_base_url": "http://127.0.0.1:11434",
+    "ollama_timeout_seconds": 90.0,
+    "text_model": "",
+    "vision_model": "",
+    "embedding_model": "",
+    "speech_model": ""
+  },
   "mixing": {
     "target_width": 1080,
     "target_height": 1920,
@@ -48,9 +57,5 @@
   },
   "database_path": ".runtime/script_mixer/media.db",
   "discovery_report_path": ".runtime/script_mixer/discovery.json",
-  "output_root": "outputs/script_mixer",
-  "text_model": "",
-  "vision_model": "",
-  "embedding_model": "",
-  "speech_model": ""
+  "output_root": "outputs/script_mixer"
 }
