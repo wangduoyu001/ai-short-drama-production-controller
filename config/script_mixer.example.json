@@ -41,6 +41,24 @@
     "embedding_model": "",
     "speech_model": ""
   },
+  "audio": {
+    "default_mode": "auto",
+    "sample_rate": 48000,
+    "channels": 2,
+    "source_volume": 1.0,
+    "mixed_source_volume": 0.22,
+    "narration_volume": 1.0,
+    "normalize_source": false,
+    "normalize_narration": true,
+    "narration_target_lufs": -16.0,
+    "source_target_lufs": -18.0,
+    "true_peak": -1.5,
+    "loudness_range": 11.0,
+    "ducking_threshold": 0.03,
+    "ducking_ratio": 10.0,
+    "ducking_attack_ms": 20.0,
+    "ducking_release_ms": 300.0
+  },
   "mixing": {
     "target_width": 1080,
     "target_height": 1920,
