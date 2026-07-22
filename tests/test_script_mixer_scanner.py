@@ -35,6 +35,13 @@ def _fake_scene(**kwargs) -> list[float]:
     return [2.0, 5.0]
 
 
+def _fake_thumbnail(**kwargs) -> Path:
+    target = Path(kwargs["output_path"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"thumbnail")
+    return target
+
+
 def test_parse_ffprobe_payload_rotation(tmp_path: Path) -> None:
     source = tmp_path / "vertical.mp4"
     source.write_bytes(b"video")
@@ -134,6 +141,40 @@ def test_incremental_media_scan(tmp_path: Path) -> None:
     assert third_summary.unchanged_files == 1
     assert third_summary.clips_written == 3
     assert len(catalog.list_clips()) == 6
+
+
+def test_fast_scan_upgrades_without_force(tmp_path: Path) -> None:
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    source = media_root / "upgrade.mp4"
+    source.write_bytes(b"video")
+    catalog = MediaCatalog(tmp_path / "media.db")
+    catalog.initialize()
+    config = MediaScanConfig(
+        generate_thumbnails=True,
+        thumbnail_root=str(tmp_path / "thumbs"),
+        scene_detection_enabled=True,
+    )
+    scanner = MediaScanner(
+        catalog=catalog,
+        config=config,
+        ffprobe_path="fake-ffprobe",
+        ffmpeg_path="fake-ffmpeg",
+        probe_function=_fake_probe,
+        scene_function=_fake_scene,
+        thumbnail_function=_fake_thumbnail,
+    )
+
+    fast_summary = scanner.scan(media_root, fast=True)
+    assert fast_summary.new_files == 1
+    assert catalog.list_sources()[0].status == "fast"
+    assert all(not clip.thumbnail_path for clip in catalog.list_clips())
+
+    full_summary = scanner.scan(media_root)
+    assert full_summary.changed_files == 1
+    assert full_summary.thumbnails_written == 3
+    assert catalog.list_sources()[0].status == "ready"
+    assert all(Path(clip.thumbnail_path).is_file() for clip in catalog.list_clips())
 
 
 def test_prune_missing_source(tmp_path: Path) -> None:
