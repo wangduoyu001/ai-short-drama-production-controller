@@ -44,7 +44,7 @@ jobs:
 
       - name: Run script mixer tests
         run: |
-          pytest -q tests/test_script_mixer.py tests/test_script_mixer_scanner.py
+          pytest -q tests/test_script_mixer*.py
 
       - name: Verify CLI imports
         run: |
