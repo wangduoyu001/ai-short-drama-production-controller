@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Protocol
+from typing import Protocol
 
 from .models import ScriptUnit, VisualIntent
 
