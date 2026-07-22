@@ -8,6 +8,12 @@ from uuid import uuid4
 
 from .catalog import MediaCatalog
 from .config import RuntimeConfig
+from .embeddings import (
+    EmbeddingSummary,
+    OllamaEmbeddingIndexer,
+    OllamaVectorSearchProvider,
+    SQLiteEmbeddingStore,
+)
 from .enrichment import EnrichmentSummary, MediaEnricher
 from .environment import discover_environment, save_discovery_report
 from .intent import IntentProvider, build_visual_intents
@@ -34,9 +40,10 @@ class ScriptMixerPipeline:
     ):
         self.config = config or RuntimeConfig()
         self.intent_provider = intent_provider
-        self.retriever = HybridRetriever(vector_provider=vector_provider)
+        self._provided_vector_provider = vector_provider
         self.catalog = MediaCatalog(self.config.database_path)
         self.catalog.initialize()
+        self.embedding_store = SQLiteEmbeddingStore(self.config.database_path)
         self._ollama_client: OllamaClient | None = None
         self._model_resolution_attempted = False
 
@@ -78,7 +85,9 @@ class ScriptMixerPipeline:
             "selected": {
                 "text_model": "",
                 "vision_model": "",
+                "embedding_model": "",
             },
+            "embedding_cache": self.embedding_store.model_counts(),
             "errors": [],
         }
         if client is None:
@@ -103,8 +112,10 @@ class ScriptMixerPipeline:
             result["installed_models"] = installed
             text = client.select_model("completion", settings.text_model)
             vision = client.select_model("vision", settings.vision_model)
+            embedding = client.select_model("embedding", settings.embedding_model)
             result["selected"]["text_model"] = text.name if text else ""
             result["selected"]["vision_model"] = vision.name if vision else ""
+            result["selected"]["embedding_model"] = embedding.name if embedding else ""
         except OllamaError as exc:
             result["errors"].append(str(exc))
         return result
@@ -129,6 +140,27 @@ class ScriptMixerPipeline:
             return None
         self.intent_provider = OllamaIntentProvider(client=client, model=model.name)
         return self.intent_provider
+
+    def _resolve_vector_provider(self) -> VectorSearchProvider | None:
+        if self._provided_vector_provider is not None:
+            return self._provided_vector_provider
+        client = self._get_ollama_client()
+        if client is None:
+            return None
+        try:
+            model = client.select_model(
+                capability="embedding",
+                preferred=self.config.local_models.embedding_model,
+            )
+        except OllamaError:
+            return None
+        if model is None or self.embedding_store.count(model.name) == 0:
+            return None
+        return OllamaVectorSearchProvider(
+            store=self.embedding_store,
+            client=client,
+            model=model.name,
+        )
 
     def scan_media(
         self,
@@ -179,6 +211,39 @@ class ScriptMixerPipeline:
         self._write_json(report_path, summary.to_dict())
         return summary
 
+    def build_embeddings(
+        self,
+        limit: int | None = None,
+        force: bool = False,
+        batch_size: int = 32,
+    ) -> EmbeddingSummary:
+        client = self._get_ollama_client()
+        if client is None:
+            raise RuntimeError("Ollama is unavailable; run models and verify the local service")
+        try:
+            model = client.select_model(
+                capability="embedding",
+                preferred=self.config.local_models.embedding_model,
+            )
+        except OllamaError as exc:
+            raise RuntimeError(str(exc)) from exc
+        if model is None:
+            raise RuntimeError("No installed Ollama model reports the embedding capability")
+        indexer = OllamaEmbeddingIndexer(
+            catalog=self.catalog,
+            store=self.embedding_store,
+            client=client,
+            model=model.name,
+        )
+        summary = indexer.build(
+            limit=limit,
+            force=force,
+            batch_size=batch_size,
+        )
+        report_path = Path(self.config.database_path).parent / "last_embeddings.json"
+        self._write_json(report_path, summary.to_dict())
+        return summary
+
     def plan(
         self,
         script_text: str,
@@ -200,9 +265,10 @@ class ScriptMixerPipeline:
             if not clips:
                 raise RuntimeError("No indexed media files exist on this computer")
 
+        retriever = HybridRetriever(vector_provider=self._resolve_vector_provider())
         usage_counts = self.catalog.recent_usage_counts()
         candidates_by_unit = {
-            intent.unit_id: self.retriever.retrieve(
+            intent.unit_id: retriever.retrieve(
                 intent,
                 clips,
                 usage_counts=usage_counts,
