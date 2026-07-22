@@ -54,8 +54,7 @@ CREATE TABLE IF NOT EXISTS media_clips (
     usable INTEGER NOT NULL DEFAULT 1,
     thumbnail_path TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(source_id) REFERENCES media_sources(source_id) ON DELETE CASCADE
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_media_clips_source_id ON media_clips(source_id);
 CREATE INDEX IF NOT EXISTS idx_media_clips_usable ON media_clips(usable);
@@ -133,7 +132,6 @@ class MediaCatalog:
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def initialize(self) -> None:
@@ -311,19 +309,23 @@ class MediaCatalog:
         return len(rows)
 
     def delete_missing_sources(self, existing_paths: set[str], root: str | Path) -> int:
-        normalized_root = str(Path(root).resolve())
+        normalized_root = Path(root).resolve()
         removed = 0
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT source_id, source_path FROM media_sources"
             ).fetchall()
             for row in rows:
-                source_path = row["source_path"]
+                source_path = Path(row["source_path"])
                 try:
-                    is_under_root = Path(source_path).is_relative_to(normalized_root)
-                except ValueError:
+                    is_under_root = source_path.is_relative_to(normalized_root)
+                except (OSError, ValueError):
                     is_under_root = False
-                if is_under_root and source_path not in existing_paths:
+                if is_under_root and str(source_path) not in existing_paths:
+                    connection.execute(
+                        "DELETE FROM media_clips WHERE source_id = ?",
+                        (row["source_id"],),
+                    )
                     connection.execute(
                         "DELETE FROM media_sources WHERE source_id = ?",
                         (row["source_id"],),
