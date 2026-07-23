@@ -131,6 +131,18 @@ class MixingRules:
 
 
 @dataclass(slots=True)
+class IntegrationConfig:
+    report_path: str = ".runtime/script_mixer/integration_report.json"
+    work_root: str = ".runtime/script_mixer/integration"
+    synthetic_render_enabled: bool = True
+    synthetic_render_seconds: float = 1.5
+    command_timeout_seconds: float = 120.0
+    minimum_free_space_bytes: int = 1073741824
+    media_probe_limit: int = 100
+    trial_duration_seconds: float = 30.0
+
+
+@dataclass(slots=True)
 class RuntimeConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
@@ -139,6 +151,7 @@ class RuntimeConfig:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     subtitles: SubtitleConfig = field(default_factory=SubtitleConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
+    integration: IntegrationConfig = field(default_factory=IntegrationConfig)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
     output_root: str = "outputs/script_mixer"
