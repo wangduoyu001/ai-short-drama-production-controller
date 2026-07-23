@@ -213,6 +213,7 @@ class AudioPlan:
     alignment_coverage: float = 0.0
     subtitle_srt_path: str = ""
     subtitle_ass_path: str = ""
+    subtitle_karaoke_ass_path: str = ""
     warnings: list[str] = field(default_factory=list)
 
 
