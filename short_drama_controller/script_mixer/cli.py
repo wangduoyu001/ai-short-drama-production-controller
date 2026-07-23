@@ -8,6 +8,7 @@ from .catalog import MediaCatalog, import_manifest
 from .config import load_config, write_default_config
 from .integration import IntegrationChecker
 from .pipeline import ScriptMixerPipeline
+from .replan import ProjectReplanner
 from .review import TimelineReviewService, load_timeline, resolve_project_dir
 from .script_parser import load_script
 
@@ -175,7 +176,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="允许选择本机不存在的候选路径；仅用于迁移排查，不建议渲染",
     )
 
-    rollback = subparsers.add_parser("rollback-project", help="回退最近一次锁定、解锁或替换")
+    replan = subparsers.add_parser(
+        "replan-project",
+        help="使用原项目文案单元、画面意图和候选池重新规划未锁定镜头",
+    )
+    replan.add_argument("--project", required=True)
+
+    rollback = subparsers.add_parser("rollback-project", help="回退最近一次锁定、解锁、替换或重新规划")
     rollback.add_argument("--project", required=True)
 
     rerender = subparsers.add_parser("rerender-project", help="使用已返修时间线覆盖重渲染final.mp4")
@@ -354,6 +361,11 @@ def main(argv: list[str] | None = None) -> int:
             reason=args.reason,
             allow_missing_media=args.allow_missing_media,
         )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "replan-project":
+        result = ProjectReplanner(config).replan(args.project)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
