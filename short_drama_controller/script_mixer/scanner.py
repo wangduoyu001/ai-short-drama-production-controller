@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -107,6 +108,25 @@ def _failed_source(path: Path, source_id: str, fingerprint: str, error: str) -> 
     )
 
 
+def _processing_duration(duration: float, configured_limit: float) -> float:
+    if duration <= 0:
+        return 0.0
+    if configured_limit <= 0:
+        return duration
+    return min(duration, configured_limit)
+
+
+def _supports_keyword(function: SceneFunction, keyword: str) -> bool:
+    try:
+        parameters = inspect.signature(function).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+
+
 class MediaScanner:
     def __init__(
         self,
@@ -147,11 +167,26 @@ class MediaScanner:
                 continue
 
             existing = self.catalog.get_source_by_path(path)
+            desired_existing_duration = (
+                _processing_duration(existing.duration, self.config.maximum_source_process_seconds)
+                if existing
+                else 0.0
+            )
+            needs_window_upgrade = bool(
+                existing
+                and existing.duration > 0
+                and abs(existing.indexed_duration - desired_existing_duration) > 0.001
+            )
             needs_upgrade = bool(
                 existing
-                and existing.status in {"fast", "metadata_only"}
-                and not fast
-                and self.ffmpeg_path
+                and (
+                    needs_window_upgrade
+                    or (
+                        existing.status in {"fast", "metadata_only"}
+                        and not fast
+                        and self.ffmpeg_path
+                    )
+                )
             )
             if existing and existing.fingerprint == fingerprint and not force and not needs_upgrade:
                 summary.unchanged_files += 1
@@ -176,6 +211,14 @@ class MediaScanner:
                 summary.errors.append(f"{path}: {exc}")
                 continue
 
+            source.indexed_duration = round(
+                _processing_duration(source.duration, self.config.maximum_source_process_seconds),
+                6,
+            )
+            source.ignored_tail_seconds = round(
+                max(0.0, source.duration - source.indexed_duration),
+                6,
+            )
             if source.duration < self.config.minimum_source_seconds:
                 source.status = "skipped"
                 source.error = "source duration is below minimum_source_seconds"
@@ -184,20 +227,28 @@ class MediaScanner:
                 summary.sources_written += 1
                 continue
 
+            if source.ignored_tail_seconds > 0:
+                summary.capped_files += 1
+                summary.ignored_tail_seconds += source.ignored_tail_seconds
+            summary.indexed_duration_seconds += source.indexed_duration
+
             cut_points: list[float] = []
             detection_error = ""
             if self.config.scene_detection_enabled and not fast and self.ffmpeg_path:
                 try:
-                    cut_points = self.scene_function(
-                        path=path,
-                        ffmpeg_path=self.ffmpeg_path,
-                        threshold=self.config.scene_threshold,
-                    )
+                    scene_arguments = {
+                        "path": path,
+                        "ffmpeg_path": self.ffmpeg_path,
+                        "threshold": self.config.scene_threshold,
+                    }
+                    if _supports_keyword(self.scene_function, "max_duration"):
+                        scene_arguments["max_duration"] = source.indexed_duration
+                    cut_points = self.scene_function(**scene_arguments)
                 except (SceneDetectionError, FileNotFoundError, OSError, ValueError) as exc:
                     detection_error = str(exc)
 
             ranges = build_scene_ranges(
-                duration=source.duration,
+                duration=source.indexed_duration,
                 cut_points=cut_points,
                 minimum_seconds=self.config.minimum_scene_seconds,
                 maximum_seconds=(
@@ -259,21 +310,31 @@ class MediaScanner:
                     )
                 )
 
+            notes: list[str] = []
             if fast:
                 source.status = "fast"
-                source.error = "fast scan: fixed-window clips without scene detection or thumbnails"
+                notes.append("fast scan: fixed-window clips without scene detection or thumbnails")
             elif not self.ffmpeg_path and (
                 self.config.scene_detection_enabled or self.config.generate_thumbnails
             ):
                 source.status = "metadata_only"
-                source.error = "ffmpeg unavailable: fixed-window clips without thumbnails"
+                notes.append("ffmpeg unavailable: fixed-window clips without thumbnails")
             else:
                 source.status = "ready"
-                source.error = f"scene detection fallback: {detection_error}" if detection_error else ""
+                if detection_error:
+                    notes.append(f"scene detection fallback: {detection_error}")
+            if source.ignored_tail_seconds > 0:
+                notes.append(
+                    f"indexed first {source.indexed_duration:.3f}s; ignored tail "
+                    f"{source.ignored_tail_seconds:.3f}s"
+                )
+            source.error = "; ".join(notes)
             written = self.catalog.replace_source_clips(source, clips)
             summary.sources_written += 1
             summary.clips_written += written
 
+        summary.indexed_duration_seconds = round(summary.indexed_duration_seconds, 6)
+        summary.ignored_tail_seconds = round(summary.ignored_tail_seconds, 6)
         if prune_missing:
             removed = self.catalog.delete_missing_sources(existing_paths, base)
             if removed:
