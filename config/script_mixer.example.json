@@ -20,6 +20,7 @@
     "recursive": true,
     "follow_symlinks": false,
     "minimum_source_seconds": 0.7,
+    "maximum_source_process_seconds": 40.0,
     "scene_detection_enabled": true,
     "scene_threshold": 0.34,
     "minimum_scene_seconds": 0.7,
