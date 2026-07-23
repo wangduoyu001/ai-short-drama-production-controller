@@ -61,6 +61,15 @@ This repository produces a director-ready material package for AI short drama an
 30. After any timeline repair, regenerate `review.json` and `report.json`; stale QA reports are not acceptable.
 31. Preview rendering may continue with warnings, but `allow_final_export=false` must remain visible when blockers exist.
 32. Re-rendering an edited project must overwrite `exports/final.mp4`; do not create decorative versioned filenames.
+33. The Jianying workflow must always produce a standard editable package; direct draft generation is an optional convenience layer, not the only deliverable.
+34. Editable proxy clips must be frame-accurately decoded and re-encoded to constant frame rate, H.264, yuv420p, the project resolution, and the project FPS. Do not use stream-copy cuts for editable proxies.
+35. Each editable proxy should include configurable head and tail handles, but handles must remain inside the source-processing window and source duration.
+36. Source audio stems, narration, and subtitles must remain separate editable assets. Do not flatten them into the proxy-only deliverable.
+37. Each timeline segment should export a bounded set of alternative candidate proxies for manual replacement.
+38. Jianying draft generation must never overwrite an existing draft. Use a unique draft name when the requested name already exists.
+39. A Jianying draft failure must preserve the standard MP4/WAV/SRT/CSV package unless the user explicitly requests `require_draft` behavior.
+40. Jianying and CapCut draft formats are private and version-sensitive. Report compatibility warnings honestly and never claim all current or future versions are guaranteed.
+41. Package caching must be based on source identity, source range, handles, target format, and audio settings. Unchanged proxies should be reused after timeline repair.
 
 ## Output priorities / 输出优先级
 
@@ -83,6 +92,8 @@ The script mixer project should make these items easy to find:
 6. `report.json` - source diversity, match quality, warnings, review state, and export permission.
 7. `render_plan.json` - exact local render command.
 8. `revision_log.json` and `revisions/` - repair history and rollback snapshots.
+9. `exports/final.mp4` - flattened preview for quick review.
+10. `exports/jianying_package/` - CFR proxy clips, source-audio stems, narration, subtitles, candidates, CSV, manifest, and import guide.
 
 Runtime catalog reports should remain in `.runtime/script_mixer/`:
 
@@ -96,7 +107,7 @@ Runtime catalog reports should remain in `.runtime/script_mixer/`:
 ## Code changes / 代码修改
 
 - Keep Python compatibility at 3.10 or newer.
-- Do not add a runtime dependency unless the behavior cannot be implemented with the standard library.
+- Do not add a runtime dependency unless the behavior cannot be implemented with the standard library. Keep Jianying draft support in the optional `jianying` dependency group.
 - After changing Python or workflow contracts, run:
 
 ```bash
@@ -104,8 +115,9 @@ pytest -q
 python scripts/v02_smoke.py
 short-drama-controller-v02 doctor
 script-driven-mixer doctor
+script-driven-mixer --help
 ```
 
 - A `BLOCKER` must prevent export.
-- New tests must be deterministic and must not require network access, installed media software, real models, or private local files.
-- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, `docs/script-mixer-integration-check.md`, `docs/script-mixer-review.md`, `config/script_mixer.example.json`, and `config/script_mixer.integration-checklist.example.json` aligned with implementation.
+- New tests must be deterministic and must not require network access, installed media software, real models, Jianying, or private local files.
+- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, `docs/script-mixer-integration-check.md`, `docs/script-mixer-review.md`, `docs/jianying-edit-workflow.md`, `config/script_mixer.example.json`, and `config/script_mixer.integration-checklist.example.json` aligned with implementation.
