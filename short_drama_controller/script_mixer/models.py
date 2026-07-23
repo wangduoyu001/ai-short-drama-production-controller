@@ -69,10 +69,10 @@ class MediaSource:
     audio_codec: str = ""
     has_audio: bool = False
     rotation: int = 0
-    indexed_duration: float = 0.0
-    ignored_tail_seconds: float = 0.0
     status: str = "ready"
     error: str = ""
+    indexed_duration: float = 0.0
+    ignored_tail_seconds: float = 0.0
 
     @property
     def is_vertical(self) -> bool:
