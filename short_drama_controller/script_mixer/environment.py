@@ -27,7 +27,15 @@ _MODEL_MARKERS: dict[str, tuple[str, ...]] = {
     "ollama": ("manifests", "blobs"),
     "huggingface": ("models--",),
     "comfyui": ("checkpoints", "clip", "vae", "loras"),
-    "whisper": ("tiny.pt", "base.pt", "small.pt", "medium.pt", "large-v3.pt"),
+    "whisper": (
+        "tiny.pt",
+        "base.pt",
+        "small.pt",
+        "medium.pt",
+        "large-v3.pt",
+        "turbo.pt",
+        "large-v3-turbo.pt",
+    ),
 }
 
 
@@ -161,7 +169,11 @@ def _discover_models(config: DiscoveryConfig, roots: list[Path]) -> dict[str, li
                     _append_model(found, "ollama", current, "filesystem_scan", "ollama_store")
                 if any(name.startswith("models--") for name in dirs):
                     _append_model(found, "huggingface", current, "filesystem_scan", "huggingface_cache")
-                if any(marker in file_names for marker in _MODEL_MARKERS["whisper"]):
+                whisper_files = [item for item in files if item.casefold().endswith(".pt")]
+                if whisper_files and (
+                    "whisper" in str(current).casefold()
+                    or any(marker in file_names for marker in _MODEL_MARKERS["whisper"])
+                ):
                     _append_model(found, "whisper", current, "filesystem_scan", "whisper_models")
         except (OSError, PermissionError):
             continue
@@ -183,6 +195,8 @@ def discover_environment(config: DiscoveryConfig | None = None) -> DiscoveryRepo
         warnings.append("ffprobe not found; automatic media probing is disabled")
     if not tools["ollama"].available:
         warnings.append("ollama not found; use the built-in rule-based intent fallback or configure another provider")
+    if not tools["whisper"].available:
+        warnings.append("whisper not found; narration timing falls back to proportional estimation")
     return DiscoveryReport(
         platform=f"{platform.system()} {platform.release()}",
         generated_at=datetime.now(timezone.utc).isoformat(),
