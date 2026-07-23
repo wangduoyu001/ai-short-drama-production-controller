@@ -377,12 +377,37 @@ def _interpolate(anchors: list[tuple[int, float]], position: int) -> float:
     return anchors[-1][1]
 
 
+def _unmatched_character_time(
+    index: int,
+    matched_times: dict[int, tuple[float, float]],
+    total_characters: int,
+    duration: float,
+) -> tuple[float, float]:
+    previous_indices = [item for item in matched_times if item < index]
+    next_indices = [item for item in matched_times if item > index]
+    previous_index = max(previous_indices) if previous_indices else None
+    next_index = min(next_indices) if next_indices else None
+    gap_start = matched_times[previous_index][1] if previous_index is not None else 0.0
+    gap_end = matched_times[next_index][0] if next_index is not None else duration
+    first_unmatched = previous_index + 1 if previous_index is not None else 0
+    last_unmatched = next_index - 1 if next_index is not None else total_characters - 1
+    count = max(1, last_unmatched - first_unmatched + 1)
+    ordinal = max(0, index - first_unmatched)
+    span = max(0.001, gap_end - gap_start)
+    start = gap_start + span * ordinal / count
+    end = gap_start + span * (ordinal + 1) / count
+    return start, end
+
+
 def _build_aligned_tokens(
     parts: list[str],
     ranges: list[tuple[int, int]],
-    anchors: list[tuple[int, float]],
+    matched_times: dict[int, tuple[float, float]],
+    duration: float,
 ) -> list[AlignedToken]:
     tokens: list[AlignedToken] = []
+    total_characters = ranges[-1][1] if ranges else 0
+    last_end = 0.0
     for index, (part, (char_start, _char_end)) in enumerate(zip(parts, ranges), start=1):
         unit_id = f"U{index:03d}"
         visible_position = char_start
@@ -390,8 +415,17 @@ def _build_aligned_tokens(
         unit_tokens: list[AlignedToken] = []
         for char in part:
             if _is_visible_character(char):
-                start = _interpolate(anchors, visible_position)
-                end = max(start + 0.01, _interpolate(anchors, visible_position + 1))
+                start, end = matched_times.get(
+                    visible_position,
+                    _unmatched_character_time(
+                        visible_position,
+                        matched_times,
+                        total_characters,
+                        duration,
+                    ),
+                )
+                start = max(last_end, start)
+                end = max(start + 0.01, min(duration, end))
                 unit_tokens.append(
                     AlignedToken(
                         unit_id=unit_id,
@@ -402,6 +436,7 @@ def _build_aligned_tokens(
                 )
                 prefix = ""
                 visible_position += 1
+                last_end = end
             elif unit_tokens:
                 unit_tokens[-1].text += char
             else:
@@ -459,11 +494,13 @@ def align_script_to_transcription(
         )
 
     anchor_times: dict[int, list[float]] = {0: [0.0], len(script_chars): [duration]}
+    matched_times: dict[int, tuple[float, float]] = {}
     for block in matcher.get_matching_blocks():
         for offset in range(block.size):
             script_index = block.a + offset
             transcript_index = block.b + offset
             _char, start, end = timed[transcript_index]
+            matched_times[script_index] = (start, end)
             anchor_times.setdefault(script_index, []).append(start)
             anchor_times.setdefault(script_index + 1, []).append(end)
     anchors: list[tuple[int, float]] = []
@@ -508,5 +545,5 @@ def align_script_to_transcription(
         units=units,
         coverage=round(coverage, 6),
         timing_source="whisper_alignment",
-        tokens=_build_aligned_tokens(parts, ranges, monotonic),
+        tokens=_build_aligned_tokens(parts, ranges, matched_times, duration),
     )
