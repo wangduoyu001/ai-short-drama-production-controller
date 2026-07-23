@@ -60,6 +60,10 @@ def test_parse_and_align_whisper_timestamps() -> None:
     assert 2.0 <= alignment.units[0].end <= 2.5
     assert alignment.units[1].start == alignment.units[0].end
     assert alignment.units[-1].end == 5.0
+    assert alignment.tokens
+    assert "".join(token.text for token in alignment.tokens) == "第一句。第二句。"
+    assert alignment.tokens[0].start == 0.0
+    assert alignment.tokens[-1].end == 5.0
 
 
 def test_low_alignment_coverage_falls_back() -> None:
@@ -81,6 +85,7 @@ def test_low_alignment_coverage_falls_back() -> None:
     assert alignment.timing_source == "proportional_fallback"
     assert alignment.coverage < 0.8
     assert alignment.units[-1].end == 3.0
+    assert alignment.tokens == []
     assert alignment.warnings
 
 
@@ -166,13 +171,18 @@ def test_subtitle_files_use_script_text(tmp_path: Path) -> None:
         config=config,
         width=1080,
         height=1920,
+        aligned_tokens=alignment.tokens,
     )
     srt = Path(paths["srt"]).read_text(encoding="utf-8-sig")
     ass = Path(paths["ass"]).read_text(encoding="utf-8-sig")
+    karaoke = Path(paths["karaoke_ass"]).read_text(encoding="utf-8-sig")
     assert "00:00:00,000" in srt
     assert "第一句。" in srt
     assert "PlayResX: 1080" in ass
     assert "Dialogue:" in ass
+    assert r"{\k" in karaoke
+    assert "第一句。" in karaoke
+    assert "第二句。" in karaoke
 
 
 def test_pipeline_uses_existing_whisper_json_and_creates_subtitles(tmp_path: Path) -> None:
@@ -218,7 +228,10 @@ def test_pipeline_uses_existing_whisper_json_and_creates_subtitles(tmp_path: Pat
     assert Path(timeline.audio.transcript_path).is_file()
     assert Path(timeline.audio.subtitle_srt_path).is_file()
     assert Path(timeline.audio.subtitle_ass_path).is_file()
+    assert Path(timeline.audio.subtitle_karaoke_ass_path).is_file()
     assert (project_dir / "alignment.json").is_file()
+    alignment_payload = json.loads((project_dir / "alignment.json").read_text(encoding="utf-8"))
+    assert "".join(token["text"] for token in alignment_payload["tokens"]) == "第一句。第二句。"
 
 
 def test_ffmpeg_can_burn_generated_subtitle(tmp_path: Path) -> None:
