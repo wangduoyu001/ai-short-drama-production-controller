@@ -69,6 +69,8 @@ class MediaSource:
     audio_codec: str = ""
     has_audio: bool = False
     rotation: int = 0
+    indexed_duration: float = 0.0
+    ignored_tail_seconds: float = 0.0
     status: str = "ready"
     error: str = ""
 
@@ -93,9 +95,12 @@ class MediaScanSummary:
     unchanged_files: int = 0
     skipped_files: int = 0
     failed_files: int = 0
+    capped_files: int = 0
     sources_written: int = 0
     clips_written: int = 0
     thumbnails_written: int = 0
+    indexed_duration_seconds: float = 0.0
+    ignored_tail_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
