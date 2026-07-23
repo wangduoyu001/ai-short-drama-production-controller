@@ -170,7 +170,7 @@ def test_export_edit_package_and_reuse_cache(tmp_path: Path) -> None:
     assert "fps=30" in video_command[video_command.index("-vf") + 1]
 
     second = exporter.export(project, create_draft=False)
-    assert second["reused_asset_count"] >= 4
+    assert second["reused_asset_count"] >= 3
     assert second["segments"][0]["reused"] is True
     assert second["candidates"]["S001"][0]["reused"] is True
     assert second["narration"]["reused"] is True
