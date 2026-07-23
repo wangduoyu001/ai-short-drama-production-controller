@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -176,13 +177,18 @@ def test_subtitle_files_use_script_text(tmp_path: Path) -> None:
     srt = Path(paths["srt"]).read_text(encoding="utf-8-sig")
     ass = Path(paths["ass"]).read_text(encoding="utf-8-sig")
     karaoke = Path(paths["karaoke_ass"]).read_text(encoding="utf-8-sig")
+    karaoke_dialogue = "".join(
+        line.rsplit(",", 1)[-1]
+        for line in karaoke.splitlines()
+        if line.startswith("Dialogue:")
+    )
+    karaoke_plain = re.sub(r"\{\\k\d+\}", "", karaoke_dialogue)
     assert "00:00:00,000" in srt
     assert "第一句。" in srt
     assert "PlayResX: 1080" in ass
     assert "Dialogue:" in ass
     assert r"{\k" in karaoke
-    assert "第一句。" in karaoke
-    assert "第二句。" in karaoke
+    assert karaoke_plain == "第一句。第二句。"
 
 
 def test_pipeline_uses_existing_whisper_json_and_creates_subtitles(tmp_path: Path) -> None:
