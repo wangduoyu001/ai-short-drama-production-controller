@@ -45,7 +45,7 @@ def detect_scene_changes(
     command.extend(
         [
             "-filter:v",
-            f"select=gt(scene\,{threshold:.4f}),showinfo",
+            f"select=gt(scene\\,{threshold:.4f}),showinfo",
             "-an",
             "-f",
             "null",
