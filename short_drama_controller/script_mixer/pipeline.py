@@ -30,6 +30,16 @@ from .render import render_timeline, save_render_plan
 from .retrieval import HybridRetriever, VectorSearchProvider
 from .scanner import MediaScanner
 from .script_parser import build_script_units
+from .subtitles import write_subtitles
+from .transcription import (
+    AlignmentResult,
+    TranscriptionError,
+    TranscriptionResult,
+    align_script_to_transcription,
+    load_transcription_json,
+    resolve_whisper_model,
+    run_whisper_cli,
+)
 
 
 class ScriptMixerPipeline:
@@ -72,6 +82,13 @@ class ScriptMixerPipeline:
 
     def model_status(self) -> dict:
         settings = self.config.local_models
+        discovery = self.doctor()
+        whisper_tool = discovery.tools.get("whisper")
+        whisper_model = resolve_whisper_model(
+            settings.speech_model,
+            discovery.models.get("whisper", []),
+            allow_download=self.config.transcription.allow_model_download,
+        )
         client = self._get_ollama_client()
         result = {
             "base_url": settings.ollama_base_url,
@@ -87,6 +104,13 @@ class ScriptMixerPipeline:
                 "text_model": "",
                 "vision_model": "",
                 "embedding_model": "",
+                "speech_model": whisper_model or "",
+            },
+            "whisper": {
+                "available": bool(whisper_tool and whisper_tool.available),
+                "executable": whisper_tool.executable if whisper_tool else "",
+                "selected_model": whisper_model or "",
+                "allow_model_download": self.config.transcription.allow_model_download,
             },
             "embedding_cache": self.embedding_store.model_counts(),
             "errors": [],
@@ -281,6 +305,68 @@ class ScriptMixerPipeline:
             effective_duration = target_duration
         return mode, resolved_path, effective_duration, measured_duration, warnings
 
+    def _prepare_timed_units(
+        self,
+        script_text: str,
+        project_id: str,
+        mode: str,
+        narration_path: str,
+        duration: float | None,
+        transcribe_narration: bool | None,
+        transcript_json_path: str | Path | None,
+        whisper_model: str | None,
+    ) -> tuple[list[ScriptUnit], TranscriptionResult | None, AlignmentResult | None, list[str]]:
+        fallback = build_script_units(script_text, target_duration=duration)
+        if mode not in {"narration", "mixed"} or not narration_path:
+            return fallback, None, None, []
+        should_transcribe = (
+            self.config.transcription.auto_transcribe_narration
+            if transcribe_narration is None
+            else transcribe_narration
+        )
+        if not self.config.transcription.enabled or not should_transcribe:
+            return fallback, None, None, ["Whisper transcription was disabled; proportional timing was used"]
+
+        warnings: list[str] = []
+        transcription: TranscriptionResult
+        try:
+            if transcript_json_path:
+                transcription = load_transcription_json(
+                    transcript_json_path,
+                    audio_path=narration_path,
+                    duration_override=duration,
+                )
+            else:
+                discovery = self.doctor()
+                whisper_tool = discovery.tools.get("whisper")
+                selected_model = resolve_whisper_model(
+                    whisper_model or self.config.local_models.speech_model,
+                    discovery.models.get("whisper", []),
+                    allow_download=self.config.transcription.allow_model_download,
+                )
+                transcription = run_whisper_cli(
+                    whisper_path=whisper_tool.executable if whisper_tool else None,
+                    audio_path=narration_path,
+                    model=selected_model,
+                    output_dir=Path(self.config.transcription.output_root) / project_id,
+                    config=self.config.transcription,
+                    initial_prompt=script_text,
+                    duration_override=duration,
+                )
+        except (TranscriptionError, FileNotFoundError, OSError, ValueError) as exc:
+            warnings.append(f"Whisper timing fallback: {exc}")
+            return fallback, None, None, warnings
+
+        alignment = align_script_to_transcription(
+            script_text=script_text,
+            transcription=transcription,
+            minimum_coverage=self.config.transcription.minimum_alignment_coverage,
+            max_chars=self.config.transcription.max_script_unit_chars,
+        )
+        warnings.extend(transcription.warnings)
+        warnings.extend(alignment.warnings)
+        return alignment.units, transcription, alignment, warnings
+
     def plan(
         self,
         script_text: str,
@@ -289,6 +375,9 @@ class ScriptMixerPipeline:
         narration_path: str | Path | None = None,
         audio_mode: str | None = None,
         narration_duration: float | None = None,
+        transcribe_narration: bool | None = None,
+        transcript_json_path: str | Path | None = None,
+        whisper_model: str | None = None,
     ) -> tuple[Timeline, Path]:
         project_id = project_id or datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:6]
         mode, resolved_narration, effective_duration, measured_duration, audio_warnings = (
@@ -299,7 +388,16 @@ class ScriptMixerPipeline:
                 narration_duration=narration_duration,
             )
         )
-        units = build_script_units(script_text, target_duration=effective_duration)
+        units, transcription, alignment, timing_warnings = self._prepare_timed_units(
+            script_text=script_text,
+            project_id=project_id,
+            mode=mode,
+            narration_path=resolved_narration,
+            duration=effective_duration,
+            transcribe_narration=transcribe_narration,
+            transcript_json_path=transcript_json_path,
+            whisper_model=whisper_model,
+        )
         provider = self._resolve_intent_provider()
         intents = build_visual_intents(units, provider=provider)
         clips = self.catalog.list_clips(usable_only=True)
@@ -313,7 +411,10 @@ class ScriptMixerPipeline:
             if not clips:
                 raise RuntimeError("No indexed media files exist on this computer")
 
-        retriever = HybridRetriever(vector_provider=self._resolve_vector_provider())
+        retriever = HybridRetriever(
+            vector_provider=self._resolve_vector_provider(),
+            prefer_source_audio=mode in {"source", "mixed"},
+        )
         usage_counts = self.catalog.recent_usage_counts()
         candidates_by_unit = {
             intent.unit_id: retriever.retrieve(
@@ -339,8 +440,37 @@ class ScriptMixerPipeline:
             narration_path=resolved_narration or None,
             narration_duration=measured_duration,
         )
-        timeline.audio.warnings.extend(audio_warnings)
-        project_dir = self._write_project(project_id, script_text, units, intents, timeline, candidates_by_unit)
+        timeline.audio.warnings.extend([*audio_warnings, *timing_warnings])
+        timeline.audio.timing_source = alignment.timing_source if alignment else "estimated"
+        timeline.audio.alignment_coverage = alignment.coverage if alignment else 0.0
+        if transcription:
+            timeline.audio.transcription_model = transcription.model
+            timeline.audio.transcription_language = transcription.language
+
+        project_dir = Path(self.config.output_root) / project_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+        subtitle_paths = write_subtitles(
+            units=units,
+            project_dir=project_dir,
+            config=self.config.subtitles,
+            width=timeline.width,
+            height=timeline.height,
+        )
+        timeline.audio.subtitle_srt_path = subtitle_paths.get("srt", "")
+        timeline.audio.subtitle_ass_path = subtitle_paths.get("ass", "")
+        if transcription:
+            timeline.audio.transcript_path = str(project_dir / "transcript.json")
+
+        self._write_project(
+            project_dir=project_dir,
+            script_text=script_text,
+            units=units,
+            intents=intents,
+            timeline=timeline,
+            candidates_by_unit=candidates_by_unit,
+            transcription=transcription,
+            alignment=alignment,
+        )
         self.catalog.record_usage(
             project_id,
             (
@@ -366,18 +496,28 @@ class ScriptMixerPipeline:
         project_dir: str | Path,
         voice_path: str | Path | None = None,
         audio_mode: str | None = None,
+        burn_subtitles: bool | None = None,
         dry_run: bool = False,
     ) -> Path:
         project_path = Path(project_dir)
         discovery = self.doctor()
         ffmpeg = discovery.tools.get("ffmpeg")
         output_path = project_path / "exports" / "final.mp4"
+        should_burn = (
+            self.config.subtitles.burn_in_by_default
+            if burn_subtitles is None
+            else burn_subtitles
+        )
+        subtitle_path = ""
+        if should_burn:
+            subtitle_path = timeline.audio.subtitle_ass_path or timeline.audio.subtitle_srt_path
         command = render_timeline(
             timeline=timeline,
             ffmpeg_path=ffmpeg.executable if ffmpeg else None,
             output_path=output_path,
             voice_path=voice_path,
             audio_mode=audio_mode,
+            subtitle_path=subtitle_path or None,
             dry_run=dry_run,
         )
         save_render_plan(command, project_path / "render_plan.json", timeline.audio)
@@ -385,19 +525,24 @@ class ScriptMixerPipeline:
 
     def _write_project(
         self,
-        project_id: str,
+        project_dir: Path,
         script_text: str,
         units: list[ScriptUnit],
         intents: list[VisualIntent],
         timeline: Timeline,
         candidates_by_unit: dict,
-    ) -> Path:
-        project_dir = Path(self.config.output_root) / project_id
+        transcription: TranscriptionResult | None,
+        alignment: AlignmentResult | None,
+    ) -> None:
         project_dir.mkdir(parents=True, exist_ok=True)
         (project_dir / "exports").mkdir(exist_ok=True)
         (project_dir / "script.txt").write_text(script_text, encoding="utf-8")
         self._write_json(project_dir / "script_units.json", [asdict(item) for item in units])
         self._write_json(project_dir / "visual_intents.json", [asdict(item) for item in intents])
+        if transcription:
+            self._write_json(project_dir / "transcript.json", transcription.to_dict())
+        if alignment:
+            self._write_json(project_dir / "alignment.json", alignment.to_dict())
         self._write_json(project_dir / "timeline.json", timeline.to_dict())
         self._write_json(
             project_dir / "candidates.json",
@@ -414,7 +559,6 @@ class ScriptMixerPipeline:
             },
         )
         self._write_json(project_dir / "report.json", self._build_report(timeline))
-        return project_dir
 
     def _build_report(self, timeline: Timeline) -> dict:
         source_seconds: dict[str, float] = {}
@@ -439,6 +583,10 @@ class ScriptMixerPipeline:
             )
         if timeline.audio.mode in {"narration", "mixed"} and timeline.audio.narration_duration <= 0:
             audio_blockers.append("narration duration is unavailable")
+        subtitle_review_required = bool(
+            timeline.audio.mode in {"narration", "mixed"}
+            and timeline.audio.timing_source != "whisper_alignment"
+        )
         return {
             "project_id": timeline.project_id,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -451,6 +599,7 @@ class ScriptMixerPipeline:
             "low_match_segments": low_match_segments,
             "audio": asdict(timeline.audio),
             "audio_blockers": audio_blockers,
+            "subtitle_review_required": subtitle_review_required,
             "warnings": list(dict.fromkeys([*blocking_warnings, *timeline.audio.warnings])),
             "allow_final_export": not blocking_warnings and not low_match_segments and not audio_blockers,
         }
