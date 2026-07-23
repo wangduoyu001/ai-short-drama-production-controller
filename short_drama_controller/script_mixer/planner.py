@@ -86,6 +86,13 @@ def _relaxed_choice(
     return candidates[0] if candidates else None
 
 
+def _candidate_rank(candidates: list[CandidateClip], selected: CandidateClip) -> int:
+    for index, candidate in enumerate(candidates, start=1):
+        if candidate.clip.clip_id == selected.clip.clip_id:
+            return index
+    return 0
+
+
 def plan_timeline(
     project_id: str,
     units: list[ScriptUnit],
@@ -159,6 +166,8 @@ def plan_timeline(
                 speed=speed,
                 audio_enabled=clip.has_audio,
                 match_reasons=candidate.reasons,
+                clip_id=clip.clip_id,
+                candidate_rank=_candidate_rank(unit_candidates, candidate),
             )
             segments.append(segment)
             used_clip_ids.add(clip.clip_id)
