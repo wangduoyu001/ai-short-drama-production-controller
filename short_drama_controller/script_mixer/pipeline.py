@@ -455,9 +455,11 @@ class ScriptMixerPipeline:
             config=self.config.subtitles,
             width=timeline.width,
             height=timeline.height,
+            aligned_tokens=alignment.tokens if alignment else None,
         )
         timeline.audio.subtitle_srt_path = subtitle_paths.get("srt", "")
         timeline.audio.subtitle_ass_path = subtitle_paths.get("ass", "")
+        timeline.audio.subtitle_karaoke_ass_path = subtitle_paths.get("karaoke_ass", "")
         if transcription:
             timeline.audio.transcript_path = str(project_dir / "transcript.json")
 
@@ -510,7 +512,11 @@ class ScriptMixerPipeline:
         )
         subtitle_path = ""
         if should_burn:
-            subtitle_path = timeline.audio.subtitle_ass_path or timeline.audio.subtitle_srt_path
+            subtitle_path = (
+                timeline.audio.subtitle_karaoke_ass_path
+                or timeline.audio.subtitle_ass_path
+                or timeline.audio.subtitle_srt_path
+            )
         command = render_timeline(
             timeline=timeline,
             ffmpeg_path=ffmpeg.executable if ffmpeg else None,
