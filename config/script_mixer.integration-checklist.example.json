@@ -1,0 +1,53 @@
+{
+  "purpose": "真实Windows电脑上的本地混剪集成验收清单。此文件只定义需要准备的素材类型，不保存本机绝对路径。",
+  "required_inputs": {
+    "media_root": "",
+    "script_path": "",
+    "voice_path": ""
+  },
+  "required_media_categories": {
+    "horizontal_video": {
+      "minimum_count": 1,
+      "description": "至少一个横屏视频"
+    },
+    "vertical_video": {
+      "minimum_count": 1,
+      "description": "至少一个竖屏视频"
+    },
+    "video_with_audio": {
+      "minimum_count": 1,
+      "description": "至少一个带原视频音轨的素材"
+    },
+    "video_without_audio": {
+      "minimum_count": 1,
+      "description": "至少一个没有音轨的素材"
+    },
+    "short_video_10s_or_less": {
+      "minimum_count": 1,
+      "description": "至少一个10秒以内的素材"
+    },
+    "long_video_over_40s": {
+      "minimum_count": 1,
+      "description": "至少一个超过40秒的素材，用于验证尾部不会被处理"
+    }
+  },
+  "trial_expectations": {
+    "target_duration_seconds": 30.0,
+    "maximum_source_process_seconds": 40.0,
+    "burn_subtitles": true,
+    "require_video_stream": true,
+    "require_audio_stream": true,
+    "require_chinese_subtitle_font": true,
+    "require_no_source_timecode_after_40s": true,
+    "require_incremental_rerun": true
+  },
+  "manual_review": {
+    "video_plays": false,
+    "audio_video_sync_is_acceptable": false,
+    "chinese_subtitles_render_correctly": false,
+    "narration_is_clear": false,
+    "source_audio_ducking_is_acceptable": false,
+    "no_frame_after_source_40s_is_used": false,
+    "notes": ""
+  }
+}
