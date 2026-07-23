@@ -77,7 +77,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     plan.add_argument(
         "--no-transcribe",
-        action="store_true",
+        dest="transcribe_narration",
+        action="store_false",
+        default=None,
         help="不调用Whisper，按配音总时长比例分配每句时间",
     )
     plan.add_argument(
@@ -88,7 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--whisper-model",
         help="本次使用的本地Whisper模型名称或.pt路径；未提供时自动扫描",
     )
-    plan.add_argument("--burn-subtitles", action="store_true", help="渲染时把ASS或SRT字幕烧录进视频")
+    plan.add_argument("--burn-subtitles", action="store_true", help="渲染时优先烧录逐字ASS字幕")
     plan.add_argument("--render", action="store_true", help="规划后调用自动发现的FFmpeg渲染")
     plan.add_argument("--dry-run", action="store_true", help="仅生成FFmpeg命令，不执行")
     return parser
@@ -185,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             narration_path=args.voice,
             audio_mode=args.audio_mode,
             narration_duration=args.voice_duration,
-            transcribe_narration=not args.no_transcribe,
+            transcribe_narration=args.transcribe_narration,
             transcript_json_path=args.transcript_json,
             whisper_model=args.whisper_model,
         )
@@ -228,6 +230,7 @@ def asdict_audio(audio) -> dict:
         "alignment_coverage": audio.alignment_coverage,
         "subtitle_srt_path": audio.subtitle_srt_path,
         "subtitle_ass_path": audio.subtitle_ass_path,
+        "subtitle_karaoke_ass_path": audio.subtitle_karaoke_ass_path,
         "warnings": audio.warnings,
     }
 
