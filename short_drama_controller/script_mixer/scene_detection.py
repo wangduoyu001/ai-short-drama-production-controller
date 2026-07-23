@@ -23,9 +23,9 @@ def detect_scene_changes(
     path: str | Path,
     ffmpeg_path: str | None,
     threshold: float = 0.34,
-    max_duration: float | None = None,
     runner: Runner | None = None,
     timeout: float = 180.0,
+    max_duration: float | None = None,
 ) -> list[float]:
     if not ffmpeg_path:
         raise SceneDetectionError("ffmpeg is unavailable")
