@@ -23,6 +23,7 @@ def detect_scene_changes(
     path: str | Path,
     ffmpeg_path: str | None,
     threshold: float = 0.34,
+    max_duration: float | None = None,
     runner: Runner | None = None,
     timeout: float = 180.0,
 ) -> list[float]:
@@ -38,13 +39,19 @@ def detect_scene_changes(
         "-nostats",
         "-i",
         str(source),
-        "-filter:v",
-        f"select=gt(scene\\,{threshold:.4f}),showinfo",
-        "-an",
-        "-f",
-        "null",
-        "-",
     ]
+    if max_duration is not None and max_duration > 0:
+        command.extend(["-t", f"{max_duration:.6f}"])
+    command.extend(
+        [
+            "-filter:v",
+            f"select=gt(scene\,{threshold:.4f}),showinfo",
+            "-an",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
     execute = runner or _default_runner
     try:
         completed = execute(
@@ -61,7 +68,12 @@ def detect_scene_changes(
         raise SceneDetectionError(f"Scene detection failed for {source}: {message[:500]}")
     text = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
     values = sorted({round(float(match), 6) for match in _PTS_TIME.findall(text)})
-    return [value for value in values if value > 0]
+    upper_bound = max_duration if max_duration is not None and max_duration > 0 else None
+    return [
+        value
+        for value in values
+        if value > 0 and (upper_bound is None or value < upper_bound)
+    ]
 
 
 def fixed_windows(
