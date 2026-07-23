@@ -41,6 +41,14 @@ This repository produces a director-ready material package for AI short drama an
 10. A 30-second timeline should target at least 8 unique source videos, prohibit adjacent same-source clips, and report any relaxed constraint.
 11. Low match scores, insufficient source diversity, missing media, watermark risk, or source-ratio violations must appear in `report.json` and must not be silently treated as final export quality.
 12. Multiple-source mixing, low textual similarity, short clips, or vector similarity are not proof of copyright compliance. Preserve source traceability.
+13. By default, each original source video may only be processed from `0` to `min(source_duration, 40.0)` seconds.
+14. Content after the configured source-processing window must not enter scene detection, clip ranges, thumbnails, vision enrichment, embeddings, retrieval candidates, or timeline segments.
+15. Preserve `duration`, `indexed_duration`, and `ignored_tail_seconds` separately. Do not falsify original media duration to represent the processing cap.
+16. The source-processing limit does not cap final mixed-video duration. A final timeline may combine the allowed windows of many source videos.
+17. Fast scan and full scan must enforce the same source-processing window.
+18. Changing `media_scan.maximum_source_process_seconds` must invalidate and rebuild incompatible source clip indexes without requiring database deletion.
+19. Whisper may provide timing evidence but must not replace the user's script text with recognition output.
+20. Default model-download behavior remains disabled. Any download-capable behavior must require explicit local configuration.
 
 ## Output priorities / 输出优先级
 
@@ -85,3 +93,4 @@ script-driven-mixer doctor
 
 - A `BLOCKER` must prevent export.
 - New tests must be deterministic and must not require network access, installed media software, real models, or private local files.
+- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, and `config/script_mixer.example.json` aligned with implementation.
