@@ -63,8 +63,8 @@ def test_parse_and_align_whisper_timestamps() -> None:
     assert alignment.units[-1].end == 5.0
     assert alignment.tokens
     assert "".join(token.text for token in alignment.tokens) == "第一句。第二句。"
-    assert alignment.tokens[0].start == 0.0
-    assert alignment.tokens[-1].end == 5.0
+    assert alignment.tokens[0].start == 0.5
+    assert alignment.tokens[-1].end == 4.0
 
 
 def test_low_alignment_coverage_falls_back() -> None:
@@ -188,6 +188,8 @@ def test_subtitle_files_use_script_text(tmp_path: Path) -> None:
     assert "PlayResX: 1080" in ass
     assert "Dialogue:" in ass
     assert r"{\k" in karaoke
+    assert "Dialogue: 0,0:00:00.50" in karaoke
+    assert "0:00:04.00" in karaoke
     assert karaoke_plain == "第一句。第二句。"
 
 
