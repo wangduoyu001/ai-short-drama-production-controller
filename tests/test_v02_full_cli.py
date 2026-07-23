@@ -15,7 +15,7 @@ from short_drama_controller.v02_qa_gate import evaluate
 def test_pyproject_entrypoint_points_to_full_cli() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'version = "0.6.0"' in pyproject
+    assert 'version = "0.7.0.dev0"' in pyproject
     assert 'short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"' in pyproject
     assert 'script-driven-mixer = "short_drama_controller.script_mixer.cli:main"' in pyproject
     assert "short_drama_controller.v02_cli:main" not in pyproject
