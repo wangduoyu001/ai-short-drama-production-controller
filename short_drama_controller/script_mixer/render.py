@@ -28,6 +28,14 @@ def _loudnorm_filter(target_lufs: float, true_peak: float, loudness_range: float
     return f"loudnorm=I={target_lufs}:TP={true_peak}:LRA={loudness_range}"
 
 
+def _escape_filter_path(path: str | Path) -> str:
+    normalized = str(Path(path).expanduser().resolve()).replace("\\", "/")
+    normalized = normalized.replace("'", r"\'")
+    for character in (":", "[", "]", ",", ";"):
+        normalized = normalized.replace(character, f"\\{character}")
+    return normalized
+
+
 def _resolve_render_audio(
     timeline: Timeline,
     voice_path: str | Path | None,
@@ -74,7 +82,6 @@ def _build_source_audio_filters(timeline: Timeline, filters: list[str]) -> str:
     filters.append(
         f"{''.join(audio_labels)}concat=n={len(audio_labels)}:v=0:a=1[source_concat]"
     )
-    chain = "[source_concat]"
     operations: list[str] = []
     if plan.normalize_source:
         operations.append(
@@ -82,7 +89,7 @@ def _build_source_audio_filters(timeline: Timeline, filters: list[str]) -> str:
         )
     operations.append(f"volume={max(0.0, plan.source_volume):.6f}")
     operations.append(f"atrim=duration={timeline.duration:.3f}")
-    filters.append(f"{chain}{','.join(operations)}[source_audio]")
+    filters.append(f"[source_concat]{','.join(operations)}[source_audio]")
     return "source_audio"
 
 
@@ -159,6 +166,7 @@ def build_ffmpeg_command(
     output_path: str | Path,
     voice_path: str | Path | None = None,
     audio_mode: str | None = None,
+    subtitle_path: str | Path | None = None,
 ) -> list[str]:
     if not timeline.segments:
         raise ValueError("Timeline contains no segments")
@@ -190,9 +198,16 @@ def build_ffmpeg_command(
             f"[{label}]"
         )
         video_labels.append(f"[{label}]")
+    base_video_label = "outv_base" if subtitle_path else "outv"
     filters.append(
-        f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[outv]"
+        f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[{base_video_label}]"
     )
+    if subtitle_path:
+        subtitle = Path(subtitle_path).expanduser().resolve()
+        if not subtitle.is_file():
+            raise FileNotFoundError(f"Subtitle file not found: {subtitle}")
+        escaped = _escape_filter_path(subtitle)
+        filters.append(f"[outv_base]subtitles=filename='{escaped}'[outv]")
     audio_label = _build_final_audio_filters(timeline, filters, mode, voice_input_index)
 
     command.extend(["-filter_complex", ";".join(filters), "-map", "[outv]"])
@@ -241,6 +256,7 @@ def render_timeline(
     output_path: str | Path,
     voice_path: str | Path | None = None,
     audio_mode: str | None = None,
+    subtitle_path: str | Path | None = None,
     dry_run: bool = False,
 ) -> list[str]:
     if not ffmpeg_path:
@@ -253,6 +269,7 @@ def render_timeline(
         output,
         voice_path=voice_path,
         audio_mode=audio_mode,
+        subtitle_path=subtitle_path,
     )
     if dry_run:
         return command
