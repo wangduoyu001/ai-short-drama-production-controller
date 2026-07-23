@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import SubtitleConfig
 from .models import ScriptUnit
+from .transcription import AlignedToken
 
 
 @dataclass(slots=True)
@@ -54,8 +56,6 @@ def build_subtitle_cues(units: list[ScriptUnit], config: SubtitleConfig) -> list
     for index, unit in enumerate(units, start=1):
         start = max(0.0, unit.start)
         end = max(start + config.minimum_cue_seconds, unit.end)
-        if config.maximum_cue_seconds > 0:
-            end = min(end, start + config.maximum_cue_seconds)
         cues.append(
             SubtitleCue(
                 index=index,
@@ -103,17 +103,9 @@ def _ass_escape(text: str) -> str:
     return text.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\n", r"\N")
 
 
-def write_ass(
-    cues: list[SubtitleCue],
-    path: str | Path,
-    config: SubtitleConfig,
-    width: int,
-    height: int,
-) -> Path:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
+def _ass_header(config: SubtitleConfig, width: int, height: int) -> str:
     alignment = max(1, min(9, config.alignment))
-    header = f"""[Script Info]
+    return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
 PlayResY: {height}
@@ -127,11 +119,57 @@ Style: Default,{config.font_name},{config.font_size},&H00FFFFFF,&H000000FF,&H000
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+
+
+def write_ass(
+    cues: list[SubtitleCue],
+    path: str | Path,
+    config: SubtitleConfig,
+    width: int,
+    height: int,
+) -> Path:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
     events = [
         f"Dialogue: 0,{_ass_timestamp(cue.start)},{_ass_timestamp(cue.end)},Default,,0,0,0,,{_ass_escape(cue.text)}"
         for cue in cues
     ]
-    target.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
+    target.write_text(
+        _ass_header(config, width, height) + "\n".join(events) + "\n",
+        encoding="utf-8-sig",
+    )
+    return target
+
+
+def write_karaoke_ass(
+    tokens: list[AlignedToken],
+    path: str | Path,
+    config: SubtitleConfig,
+    width: int,
+    height: int,
+) -> Path:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    grouped: OrderedDict[str, list[AlignedToken]] = OrderedDict()
+    for token in tokens:
+        grouped.setdefault(token.unit_id, []).append(token)
+    events: list[str] = []
+    for unit_tokens in grouped.values():
+        if not unit_tokens:
+            continue
+        start = unit_tokens[0].start
+        end = max(token.end for token in unit_tokens)
+        parts: list[str] = []
+        for token in unit_tokens:
+            centiseconds = max(1, int(round((token.end - token.start) * 100)))
+            parts.append(r"{\k" + str(centiseconds) + "}" + _ass_escape(token.text))
+        events.append(
+            f"Dialogue: 0,{_ass_timestamp(start)},{_ass_timestamp(end)},Default,,0,0,0,,{''.join(parts)}"
+        )
+    target.write_text(
+        _ass_header(config, width, height) + "\n".join(events) + "\n",
+        encoding="utf-8-sig",
+    )
     return target
 
 
@@ -141,6 +179,7 @@ def write_subtitles(
     config: SubtitleConfig,
     width: int,
     height: int,
+    aligned_tokens: list[AlignedToken] | None = None,
 ) -> dict[str, str]:
     if not config.enabled:
         return {}
@@ -160,4 +199,14 @@ def write_subtitles(
                 height=height,
             )
         )
+        if aligned_tokens:
+            result["karaoke_ass"] = str(
+                write_karaoke_ass(
+                    aligned_tokens,
+                    subtitle_dir / "captions.karaoke.ass",
+                    config=config,
+                    width=width,
+                    height=height,
+                )
+            )
     return result
