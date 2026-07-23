@@ -184,6 +184,11 @@ class TimelineSegment:
     speed: float = 1.0
     audio_enabled: bool = False
     match_reasons: list[str] = field(default_factory=list)
+    clip_id: str = ""
+    locked: bool = False
+    review_status: str = "unreviewed"
+    replacement_reason: str = ""
+    candidate_rank: int = 0
 
     @property
     def duration(self) -> float:
