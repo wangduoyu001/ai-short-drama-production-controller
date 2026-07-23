@@ -6,11 +6,44 @@
 
 本模块不硬编码软件、模型、素材盘符或缓存路径。仓库拉取到实际电脑后，先扫描运行环境；自动发现失败时，再使用本地忽略配置覆盖路径。
 
+## 源视频处理窗口
+
+每个原视频默认只处理前40秒：
+
+```text
+0秒 ～ min(原视频实际时长, 40秒)
+```
+
+40秒后的尾部不进行场景检测、不生成缩略图、不进入视觉分析、不构建向量，也不能被时间线引用。该限制针对每个原始素材，不限制最终成片总时长。
+
+数据库同时保留：
+
+- `duration`：原视频实际总时长。
+- `indexed_duration`：实际入库时长，默认最多40秒。
+- `ignored_tail_seconds`：被忽略的尾部时长。
+
+配置：
+
+```json
+{
+  "media_scan": {
+    "maximum_source_process_seconds": 40.0
+  }
+}
+```
+
+完整后续路线见：
+
+```text
+docs/script-mixer-next-development-plan.md
+```
+
 ## 当前完整流水线
 
 ```text
 本地原视频
 → FFprobe 元数据和音轨识别
+→ 每个源视频截取前40秒处理窗口
 → FFmpeg 场景切分
 → 关键帧缩略图
 → 本地视觉模型描述
@@ -46,6 +79,7 @@
 - FFprobe 读取时长、画幅、旋转、帧率、编码和音轨状态。
 - 本地视频目录递归扫描。
 - 文件指纹、增量更新、变化检测和丢失索引清理。
+- 每个源视频默认只分析前40秒。
 - FFmpeg 场景变化检测。
 - 场景检测失败时固定窗口切分。
 - 镜头中点缩略图。
@@ -73,6 +107,7 @@
 - 历史使用惩罚。
 - 低匹配镜头和规则放宽报告。
 - 原始来源、源时间码和匹配原因可追溯。
+- 时间线禁止引用源视频40秒后的区间。
 
 ### 音频
 
@@ -291,6 +326,13 @@ script-driven-mixer --config script_mixer.local.json build-embeddings
 script-driven-mixer --config script_mixer.local.json catalog-status
 ```
 
+状态输出包括：
+
+- 原始素材总时长。
+- 实际入库总时长。
+- 被忽略尾部总时长。
+- 被40秒限制截断的素材数量。
+
 ## 常用剪辑命令
 
 ### 无真实配音，保留原声
@@ -377,6 +419,18 @@ script-driven-mixer --config script_mixer.local.json plan \
 
 ## 配置重点
 
+### 源视频处理上限
+
+```json
+{
+  "media_scan": {
+    "maximum_source_process_seconds": 40.0
+  }
+}
+```
+
+设置为 `0` 表示不限制，但默认和推荐值为40秒。
+
 ### 默认不下载 Whisper 模型
 
 ```json
@@ -446,6 +500,14 @@ script-driven-mixer --config script_mixer.local.json plan \
 - 是否需要人工检查字幕。
 - 是否允许正式导出。
 
+素材库状态额外包含：
+
+- `original_duration_seconds`
+- `indexed_duration_seconds`
+- `ignored_tail_seconds`
+- `capped_source_count`
+- `maximum_source_process_seconds`
+
 ## 测试
 
 ```bash
@@ -462,6 +524,8 @@ script-driven-mixer --help
 - 使用假执行器验证外部命令契约。
 - 覆盖 Python 3.10 和 3.12。
 - 验证用户原文在逐字字幕中完整保留。
+- 验证长素材不会产生40秒后的镜头。
+- 验证FFmpeg场景检测只运行到40秒。
 
 ## 安全边界
 
@@ -471,5 +535,6 @@ script-driven-mixer --help
 - 不自动发布视频。
 - 不偷偷下载模型。
 - Whisper 识别文本不能覆盖用户原文。
+- 源视频40秒后的尾部不能进入视觉分析、向量或时间线。
 - 多来源混剪不等于获得版权授权。
 - 正式发布前仍需人工检查画面、字幕、事实和素材权利。
