@@ -22,7 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     init_config.add_argument("--out", default="script_mixer.config.json")
 
     subparsers.add_parser("doctor", help="扫描本机软件、模型和常见缓存位置")
-    subparsers.add_parser("models", help="读取Ollama已安装模型、能力和自动选择结果")
+    subparsers.add_parser("models", help="读取Ollama和Whisper模型、能力与自动选择结果")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
     subparsers.add_parser("catalog-status", help="显示已入库原视频、镜头、音轨和向量数量")
 
@@ -75,6 +75,20 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         help="已知配音时长时可直接提供；否则使用自动发现的FFprobe读取",
     )
+    plan.add_argument(
+        "--no-transcribe",
+        action="store_true",
+        help="不调用Whisper，按配音总时长比例分配每句时间",
+    )
+    plan.add_argument(
+        "--transcript-json",
+        help="使用已有Whisper JSON进行逐句对齐，不重新执行Whisper",
+    )
+    plan.add_argument(
+        "--whisper-model",
+        help="本次使用的本地Whisper模型名称或.pt路径；未提供时自动扫描",
+    )
+    plan.add_argument("--burn-subtitles", action="store_true", help="渲染时把ASS或SRT字幕烧录进视频")
     plan.add_argument("--render", action="store_true", help="规划后调用自动发现的FFmpeg渲染")
     plan.add_argument("--dry-run", action="store_true", help="仅生成FFmpeg命令，不执行")
     return parser
@@ -100,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "models":
         result = pipeline.model_status()
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if result["available"] else 1
+        available = bool(result["available"] or result.get("whisper", {}).get("available"))
+        return 0 if available else 1
 
     if args.command == "init-db":
         catalog = MediaCatalog(config.database_path)
@@ -170,6 +185,9 @@ def main(argv: list[str] | None = None) -> int:
             narration_path=args.voice,
             audio_mode=args.audio_mode,
             narration_duration=args.voice_duration,
+            transcribe_narration=not args.no_transcribe,
+            transcript_json_path=args.transcript_json,
+            whisper_model=args.whisper_model,
         )
         result = {
             "project_id": timeline.project_id,
@@ -183,9 +201,11 @@ def main(argv: list[str] | None = None) -> int:
             output = pipeline.render(
                 timeline,
                 project_dir,
+                burn_subtitles=args.burn_subtitles,
                 dry_run=args.dry_run,
             )
             result["render_output"] = str(output)
+            result["burn_subtitles"] = args.burn_subtitles
             result["dry_run"] = args.dry_run
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -201,6 +221,13 @@ def asdict_audio(audio) -> dict:
         "narration_duration": audio.narration_duration,
         "source_audio_segments": audio.source_audio_segments,
         "source_audio_coverage": audio.source_audio_coverage,
+        "transcript_path": audio.transcript_path,
+        "transcription_model": audio.transcription_model,
+        "transcription_language": audio.transcription_language,
+        "timing_source": audio.timing_source,
+        "alignment_coverage": audio.alignment_coverage,
+        "subtitle_srt_path": audio.subtitle_srt_path,
+        "subtitle_ass_path": audio.subtitle_ass_path,
         "warnings": audio.warnings,
     }
 
