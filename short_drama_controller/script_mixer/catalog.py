@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS media_sources (
     modified_ns INTEGER NOT NULL,
     fingerprint TEXT NOT NULL,
     duration REAL NOT NULL DEFAULT 0,
+    indexed_duration REAL NOT NULL DEFAULT 0,
+    ignored_tail_seconds REAL NOT NULL DEFAULT 0,
     width INTEGER NOT NULL DEFAULT 0,
     height INTEGER NOT NULL DEFAULT 0,
     fps REAL NOT NULL DEFAULT 0,
@@ -105,6 +107,13 @@ def _row_to_clip(row: sqlite3.Row) -> MediaClip:
 
 
 def _row_to_source(row: sqlite3.Row) -> MediaSource:
+    keys = set(row.keys())
+    duration = float(row["duration"])
+    indexed_duration = (
+        float(row["indexed_duration"])
+        if "indexed_duration" in keys
+        else duration
+    )
     return MediaSource(
         source_id=row["source_id"],
         source_path=row["source_path"],
@@ -113,7 +122,7 @@ def _row_to_source(row: sqlite3.Row) -> MediaSource:
         file_size=int(row["file_size"]),
         modified_ns=int(row["modified_ns"]),
         fingerprint=row["fingerprint"],
-        duration=float(row["duration"]),
+        duration=duration,
         width=int(row["width"]),
         height=int(row["height"]),
         fps=float(row["fps"]),
@@ -121,6 +130,12 @@ def _row_to_source(row: sqlite3.Row) -> MediaSource:
         audio_codec=row["audio_codec"],
         has_audio=bool(row["has_audio"]),
         rotation=int(row["rotation"]),
+        indexed_duration=indexed_duration,
+        ignored_tail_seconds=(
+            float(row["ignored_tail_seconds"])
+            if "ignored_tail_seconds" in keys
+            else max(0.0, duration - indexed_duration)
+        ),
         status=row["status"],
         error=row["error"],
     )
@@ -139,10 +154,19 @@ class MediaCatalog:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(_SCHEMA)
+            self._ensure_column(connection, "media_sources", "indexed_duration", "REAL NOT NULL DEFAULT 0")
+            self._ensure_column(connection, "media_sources", "ignored_tail_seconds", "REAL NOT NULL DEFAULT 0")
             self._ensure_column(connection, "media_clips", "thumbnail_path", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(connection, "media_clips", "has_audio", "INTEGER NOT NULL DEFAULT 0")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_media_clips_has_audio ON media_clips(has_audio)"
+            )
+            connection.execute(
+                """
+                UPDATE media_sources
+                SET indexed_duration = duration
+                WHERE indexed_duration <= 0 AND duration > 0
+                """
             )
 
     @staticmethod
@@ -191,9 +215,10 @@ class MediaCatalog:
             """
             INSERT INTO media_sources (
                 source_id, source_path, filename, extension, file_size, modified_ns,
-                fingerprint, duration, width, height, fps, video_codec, audio_codec,
+                fingerprint, duration, indexed_duration, ignored_tail_seconds,
+                width, height, fps, video_codec, audio_codec,
                 has_audio, rotation, status, error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_id) DO UPDATE SET
                 source_path=excluded.source_path,
                 filename=excluded.filename,
@@ -202,6 +227,8 @@ class MediaCatalog:
                 modified_ns=excluded.modified_ns,
                 fingerprint=excluded.fingerprint,
                 duration=excluded.duration,
+                indexed_duration=excluded.indexed_duration,
+                ignored_tail_seconds=excluded.ignored_tail_seconds,
                 width=excluded.width,
                 height=excluded.height,
                 fps=excluded.fps,
@@ -216,10 +243,11 @@ class MediaCatalog:
             (
                 payload["source_id"], payload["source_path"], payload["filename"],
                 payload["extension"], payload["file_size"], payload["modified_ns"],
-                payload["fingerprint"], payload["duration"], payload["width"],
-                payload["height"], payload["fps"], payload["video_codec"],
-                payload["audio_codec"], int(payload["has_audio"]), payload["rotation"],
-                payload["status"], payload["error"],
+                payload["fingerprint"], payload["duration"], payload["indexed_duration"],
+                payload["ignored_tail_seconds"], payload["width"], payload["height"],
+                payload["fps"], payload["video_codec"], payload["audio_codec"],
+                int(payload["has_audio"]), payload["rotation"], payload["status"],
+                payload["error"],
             ),
         )
 
