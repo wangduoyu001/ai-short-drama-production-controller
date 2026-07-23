@@ -117,6 +117,26 @@
     "media_probe_limit": 100,
     "trial_duration_seconds": 30.0
   },
+  "edit_package": {
+    "output_dir_name": "jianying_package",
+    "handle_before_seconds": 1.0,
+    "handle_after_seconds": 1.0,
+    "candidate_export_count": 3,
+    "export_source_audio_stems": true,
+    "export_narration_wav": true,
+    "export_subtitles": true,
+    "video_codec": "libx264",
+    "video_preset": "medium",
+    "video_crf": 18,
+    "audio_codec": "pcm_s16le",
+    "sample_rate": 48000,
+    "channels": 2,
+    "clean_stale_files": false,
+    "create_jianying_draft": true,
+    "require_jianying_draft": false,
+    "jianying_draft_root": "",
+    "jianying_draft_name_prefix": "AI粗剪"
+  },
   "database_path": ".runtime/script_mixer/media.db",
   "discovery_report_path": ".runtime/script_mixer/discovery.json",
   "output_root": "outputs/script_mixer"
