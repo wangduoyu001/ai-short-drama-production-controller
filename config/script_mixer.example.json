@@ -107,6 +107,16 @@
     "low_match_threshold": 0.45,
     "allow_missing_media_files_during_planning": true
   },
+  "integration": {
+    "report_path": ".runtime/script_mixer/integration_report.json",
+    "work_root": ".runtime/script_mixer/integration",
+    "synthetic_render_enabled": true,
+    "synthetic_render_seconds": 1.5,
+    "command_timeout_seconds": 120.0,
+    "minimum_free_space_bytes": 1073741824,
+    "media_probe_limit": 100,
+    "trial_duration_seconds": 30.0
+  },
   "database_path": ".runtime/script_mixer/media.db",
   "discovery_report_path": ".runtime/script_mixer/discovery.json",
   "output_root": "outputs/script_mixer"
