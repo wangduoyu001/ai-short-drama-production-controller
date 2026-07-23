@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+jianying = ["pyJianYingDraft>=0.3,<0.4"]
+
 [project.scripts]
 short-drama-controller = "short_drama_controller.cli:main"
 short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"
