@@ -77,6 +77,43 @@ class AudioConfig:
 
 
 @dataclass(slots=True)
+class TranscriptionConfig:
+    enabled: bool = True
+    auto_transcribe_narration: bool = True
+    allow_model_download: bool = False
+    language: str = "Chinese"
+    task: str = "transcribe"
+    word_timestamps: bool = True
+    device: str = ""
+    fp16: bool | None = None
+    timeout_seconds: float = 1800.0
+    output_root: str = ".runtime/script_mixer/transcripts"
+    minimum_alignment_coverage: float = 0.55
+    initial_prompt_max_chars: int = 500
+    max_script_unit_chars: int = 26
+
+
+@dataclass(slots=True)
+class SubtitleConfig:
+    enabled: bool = True
+    formats: list[str] = field(default_factory=lambda: ["srt", "ass"])
+    max_chars_per_line: int = 18
+    max_lines: int = 2
+    minimum_cue_seconds: float = 0.35
+    maximum_cue_seconds: float = 8.0
+    font_name: str = "Microsoft YaHei"
+    font_size: int = 64
+    bold: int = 0
+    outline: float = 3.0
+    shadow: float = 1.0
+    alignment: int = 2
+    margin_left: int = 80
+    margin_right: int = 80
+    margin_vertical: int = 150
+    burn_in_by_default: bool = False
+
+
+@dataclass(slots=True)
 class MixingRules:
     target_width: int = 1080
     target_height: int = 1920
@@ -98,6 +135,8 @@ class RuntimeConfig:
     media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
     local_models: LocalModelConfig = field(default_factory=LocalModelConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
+    subtitles: SubtitleConfig = field(default_factory=SubtitleConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
