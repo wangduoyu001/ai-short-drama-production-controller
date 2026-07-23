@@ -53,6 +53,14 @@ This repository produces a director-ready material package for AI short drama an
 22. Expensive integration operations such as full media scan, semantic enrichment, embeddings, Whisper, and real rendering must require explicit user arguments.
 23. Integration reports must be written incrementally and include remediation rather than only exception traces.
 24. A real acceptance run must verify no timeline segment references source media beyond the configured processing window.
+25. Every planned timeline segment must preserve its exact `clip_id` and original candidate rank.
+26. A locked segment must reject direct replacement and remain at the same timeline position during project replanning.
+27. Project replanning must use the saved script units, visual intents, and candidates; it must not silently rebuild narration timing.
+28. Every lock, unlock, replacement, and replan action must snapshot the previous timeline and support rollback.
+29. Repair must preserve segment timeline start, timeline end, and duration unless the user explicitly changes narration timing.
+30. After any timeline repair, regenerate `review.json` and `report.json`; stale QA reports are not acceptable.
+31. Preview rendering may continue with warnings, but `allow_final_export=false` must remain visible when blockers exist.
+32. Re-rendering an edited project must overwrite `exports/final.mp4`; do not create decorative versioned filenames.
 
 ## Output priorities / 输出优先级
 
@@ -71,8 +79,10 @@ The script mixer project should make these items easy to find:
 2. `visual_intents.json` - literal, metaphor, tag, emotion, and shot requirements.
 3. `candidates.json` - candidate media and score reasons.
 4. `timeline.json` - source timecodes and final timeline positions.
-5. `report.json` - source diversity, match quality, warnings, and export state.
-6. `render_plan.json` - exact local render command.
+5. `review.json` - lock, review, replacement, source-window, and candidate status.
+6. `report.json` - source diversity, match quality, warnings, review state, and export permission.
+7. `render_plan.json` - exact local render command.
+8. `revision_log.json` and `revisions/` - repair history and rollback snapshots.
 
 Runtime catalog reports should remain in `.runtime/script_mixer/`:
 
@@ -98,4 +108,4 @@ script-driven-mixer doctor
 
 - A `BLOCKER` must prevent export.
 - New tests must be deterministic and must not require network access, installed media software, real models, or private local files.
-- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, `docs/script-mixer-integration-check.md`, `config/script_mixer.example.json`, and `config/script_mixer.integration-checklist.example.json` aligned with implementation.
+- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, `docs/script-mixer-integration-check.md`, `docs/script-mixer-review.md`, `config/script_mixer.example.json`, and `config/script_mixer.integration-checklist.example.json` aligned with implementation.
