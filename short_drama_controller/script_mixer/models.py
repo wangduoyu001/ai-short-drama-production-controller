@@ -206,6 +206,13 @@ class AudioPlan:
     ducking_release_ms: float = 300.0
     source_audio_segments: int = 0
     source_audio_coverage: float = 0.0
+    transcript_path: str = ""
+    transcription_model: str = ""
+    transcription_language: str = ""
+    timing_source: str = "estimated"
+    alignment_coverage: float = 0.0
+    subtitle_srt_path: str = ""
+    subtitle_ass_path: str = ""
     warnings: list[str] = field(default_factory=list)
 
 
