@@ -32,6 +32,7 @@ class MediaScanConfig:
     recursive: bool = True
     follow_symlinks: bool = False
     minimum_source_seconds: float = 0.7
+    maximum_source_process_seconds: float = 40.0
     scene_detection_enabled: bool = True
     scene_threshold: float = 0.34
     minimum_scene_seconds: float = 0.7
