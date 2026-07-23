@@ -18,7 +18,7 @@ short_drama_controller/script_mixer/
 - FFmpeg、FFprobe、Ollama、Whisper CLI、ComfyUI 模型目录和常见模型缓存自动发现
 - 软件和模型路径默认留空，不提交本机绝对路径
 - 本地视频目录增量扫描
-- FFprobe 元数据读取
+- FFprobe 元数据和原视频音轨识别
 - FFmpeg 场景切分和固定窗口回退
 - 镜头关键帧缩略图
 - SQLite 原视频、镜头、使用历史和向量缓存
@@ -29,7 +29,10 @@ short_drama_controller/script_mixer/
 - 词义、标签、情绪、景别、向量、画质和历史使用融合检索
 - 多来源时间线编排
 - 相邻同源、来源冷却、单来源占比和低匹配审核
-- FFmpeg 渲染命令和预览成片输出
+- 真实配音、原视频音频、二者混合和静音模式
+- 本地 Whisper 词级时间戳和用户原文对齐
+- SRT、ASS 和逐字卡拉OK ASS 字幕
+- FFmpeg 音频混合、自动压低、字幕烧录和预览成片
 - Python 3.10/3.12 CI 测试工作流
 
 详细开发契约：
@@ -65,16 +68,18 @@ docs/script-driven-mixer.md
 
 ### 文案驱动本地混剪链
 
-输入口播文案，输出：
+输入文案，可选真实配音，输出：
 
 ```text
 文案
 → 语义单元
+→ 可选Whisper真实时间轴
 → 画面意图
 → 本地素材检索
 → 多来源编排
-→ 时间线
-→ 审核报告
+→ 音频混合
+→ SRT/ASS/逐字字幕
+→ 时间线与审核报告
 → FFmpeg预览成片
 ```
 
@@ -258,7 +263,7 @@ warning_count 警告问题数
 script-driven-mixer init-config --out script_mixer.local.json
 ```
 
-所有模型名称默认留空，通过本地能力自动选择。配置文件已被 `.gitignore` 忽略。
+所有模型名称默认留空，通过本地能力和缓存自动选择。配置文件已被 `.gitignore` 忽略。
 
 ### 2. 扫描软件和模型目录
 
@@ -280,13 +285,13 @@ script-driven-mixer --config script_mixer.local.json doctor
 .runtime/script_mixer/discovery.json
 ```
 
-### 3. 查看 Ollama 模型能力
+### 3. 查看模型能力
 
 ```bash
 script-driven-mixer --config script_mixer.local.json models
 ```
 
-显示已安装模型、能力、参数规模、量化等级，以及自动选择的文本、视觉和嵌入模型。
+显示 Ollama 模型能力，以及 Whisper CLI、本地权重和自动选择结果。默认不自动下载 Whisper 模型。
 
 ### 4. 初始化素材数据库
 
@@ -328,19 +333,12 @@ script-driven-mixer --config script_mixer.local.json scan-media \
 script-driven-mixer --config script_mixer.local.json catalog-status
 ```
 
-显示原视频、镜头、总时长、缩略图、视觉分析和向量缓存数量。
+显示原视频、音轨、镜头、总时长、缩略图、视觉分析和向量缓存数量。
 
 ### 7. 分析关键帧
 
-先分析少量：
-
 ```bash
 script-driven-mixer --config script_mixer.local.json enrich-media --limit 100
-```
-
-完整增量分析：
-
-```bash
 script-driven-mixer --config script_mixer.local.json enrich-media
 ```
 
@@ -348,69 +346,99 @@ script-driven-mixer --config script_mixer.local.json enrich-media
 
 ### 8. 构建素材向量
 
-先试运行：
-
 ```bash
 script-driven-mixer --config script_mixer.local.json build-embeddings \
   --limit 500 \
   --batch-size 32
-```
 
-完整增量构建：
-
-```bash
 script-driven-mixer --config script_mixer.local.json build-embeddings
 ```
 
 缓存按 `clip_id + embedding_model + content_hash` 管理。内容未变化时不会重复计算。
 
-### 9. 根据文案生成30秒时间线
+## 常用剪辑命令
+
+### 保留原视频音频
 
 ```bash
 script-driven-mixer --config script_mixer.local.json plan \
   --script input.txt \
   --duration 30 \
-  --project-id demo_001
+  --audio-mode source \
+  --project-id source_demo \
+  --render
 ```
 
-系统依次执行：
-
-```text
-文案清洗
-→ 语义单元
-→ 直接与隐喻画面意图
-→ 文案向量
-→ 素材候选
-→ 多来源全局编排
-→ 时间线
-→ 来源和质量报告
-```
-
-Ollama 不在线时，文案意图退回规则模式；向量缓存不存在时，检索退回描述、标签、情绪和景别，不会让整个流程因缺一个模型直接躺平。
-
-### 10. 只生成 FFmpeg 命令
+### 使用真实配音并自动逐句对齐
 
 ```bash
 script-driven-mixer --config script_mixer.local.json plan \
   --script input.txt \
-  --duration 30 \
-  --project-id demo_001 \
+  --audio-mode narration \
+  --voice voice.wav \
+  --project-id narration_demo \
+  --render
+```
+
+### 配音与原声混合，烧录逐字字幕
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --audio-mode mixed \
+  --voice voice.wav \
+  --burn-subtitles \
+  --project-id mixed_demo \
+  --render
+```
+
+### 复用已有 Whisper JSON
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --audio-mode narration \
+  --voice voice.wav \
+  --transcript-json voice.json \
+  --burn-subtitles \
+  --render
+```
+
+### 指定本地 Whisper 权重
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --audio-mode narration \
+  --voice voice.wav \
+  --whisper-model "D:/Models/Whisper/medium.pt" \
+  --render
+```
+
+### 禁止本次 Whisper 转写
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --audio-mode narration \
+  --voice voice.wav \
+  --no-transcribe \
+  --render
+```
+
+此时仍以配音真实总时长为准，但每句按文案长度比例分配。
+
+### 只生成 FFmpeg 命令
+
+```bash
+script-driven-mixer --config script_mixer.local.json plan \
+  --script input.txt \
+  --audio-mode mixed \
+  --voice voice.wav \
+  --burn-subtitles \
   --render \
   --dry-run
 ```
-
-### 11. 渲染成片
-
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --duration 30 \
-  --project-id demo_002 \
-  --render \
-  --voice voice.wav
-```
-
-当前配音作为最终音轨合入。真实词级时间轴、字幕和音乐混音属于下一阶段。
 
 ## 混剪默认规则
 
@@ -427,7 +455,7 @@ script-driven-mixer --config script_mixer.local.json plan \
 | 来源再次出现间隔 | 3个镜头 |
 | 低匹配阈值 | 0.45 |
 
-规则无法满足时，时间线会保留警告，并在 `report.json` 中禁止正式导出。
+规则无法满足时，时间线保留警告，并在 `report.json` 中阻止正式导出。
 
 ## 混剪输出
 
@@ -437,12 +465,20 @@ outputs/script_mixer/<project_id>/
 ├─ script_units.json
 ├─ visual_intents.json
 ├─ candidates.json
+├─ transcript.json
+├─ alignment.json
 ├─ timeline.json
 ├─ report.json
 ├─ render_plan.json
+├─ subtitles/
+│  ├─ captions.srt
+│  ├─ captions.ass
+│  └─ captions.karaoke.ass
 └─ exports/
    └─ final.mp4
 ```
+
+`transcript.json` 和逐字字幕只在成功获得转写时间证据时生成。
 
 `report.json` 记录：
 
@@ -450,9 +486,15 @@ outputs/script_mixer/<project_id>/
 unique_source_count 唯一来源数量
 highest_single_source_ratio 最高单来源占比
 low_match_segments 低匹配镜头
+source_audio_coverage 原声覆盖率
+timing_source 时间来源
+alignment_coverage 文案转写对齐覆盖率
+subtitle_review_required 字幕是否需要人工复核
 warnings 规则放宽和风险
 allow_final_export 是否允许正式导出
 ```
+
+Whisper 只提供时间证据。字幕正文始终使用用户输入原文，不使用识别错字覆盖原稿。
 
 # Codex Skill 目录
 
@@ -473,7 +515,7 @@ allow_final_export 是否允许正式导出
 pytest -q
 python scripts/v02_smoke.py
 short-drama-controller-v02 doctor
-script-driven-mixer doctor
+script-driven-mixer --help
 ```
 
 混剪专项：
@@ -482,7 +524,7 @@ script-driven-mixer doctor
 pytest -q tests/test_script_mixer*.py
 ```
 
-专项测试不依赖网络、FFmpeg、FFprobe、Ollama、真实模型或私人素材。GitHub Actions 在 Python 3.10 和 3.12 下执行。
+专项测试不依赖网络、FFmpeg、FFprobe、Ollama、Whisper、真实模型或私人素材。GitHub Actions 在 Python 3.10 和 3.12 下执行。
 
 # 版权安全
 
