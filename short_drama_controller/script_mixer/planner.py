@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
+from dataclasses import replace
 
 from .config import MixingRules
 from .models import CandidateClip, ScriptUnit, Timeline, TimelineSegment, VisualIntent
@@ -18,8 +19,11 @@ def _candidate_allowed(
     project_duration: float,
     rules: MixingRules,
     segment_duration: float,
+    forbidden_sources: set[str] | None = None,
 ) -> bool:
     clip = candidate.clip
+    if forbidden_sources and clip.source_id in forbidden_sources:
+        return False
     if recent_sources and recent_sources[-1] == clip.source_id:
         return False
     if clip.source_id in recent_sources[-rules.source_reuse_gap :]:
@@ -43,6 +47,7 @@ def _choose_candidate(
     project_duration: float,
     segment_duration: float,
     rules: MixingRules,
+    forbidden_sources: set[str] | None = None,
 ) -> CandidateClip | None:
     ranked: list[tuple[float, CandidateClip]] = []
     used_sources = set(source_seconds)
@@ -57,6 +62,7 @@ def _choose_candidate(
             project_duration,
             rules,
             segment_duration,
+            forbidden_sources=forbidden_sources,
         ):
             continue
         diversity_bonus = 0.12 if clip.source_id not in used_sources else 0.0
@@ -73,13 +79,21 @@ def _relaxed_choice(
     candidates: list[CandidateClip],
     used_clip_ids: set[str],
     recent_sources: list[str],
+    forbidden_sources: set[str] | None = None,
 ) -> CandidateClip | None:
     for candidate in candidates:
         if candidate.clip.clip_id in used_clip_ids:
             continue
         if recent_sources and candidate.clip.source_id == recent_sources[-1]:
             continue
+        if forbidden_sources and candidate.clip.source_id in forbidden_sources:
+            continue
         return candidate
+    for candidate in candidates:
+        if candidate.clip.clip_id not in used_clip_ids:
+            if forbidden_sources and candidate.clip.source_id in forbidden_sources:
+                continue
+            return candidate
     for candidate in candidates:
         if candidate.clip.clip_id not in used_clip_ids:
             return candidate
@@ -93,12 +107,43 @@ def _candidate_rank(candidates: list[CandidateClip], selected: CandidateClip) ->
     return 0
 
 
+def _validate_locked_segment(
+    locked: TimelineSegment,
+    segment_id: str,
+    unit: ScriptUnit,
+    timeline_start: float,
+    timeline_end: float,
+) -> TimelineSegment:
+    if locked.segment_id != segment_id:
+        raise TimelinePlanningError(
+            f"Locked segment ID mismatch: expected {segment_id}, got {locked.segment_id}"
+        )
+    if locked.unit_id != unit.unit_id:
+        raise TimelinePlanningError(
+            f"Locked segment {segment_id} belongs to {locked.unit_id}, expected {unit.unit_id}"
+        )
+    if abs(locked.timeline_start - timeline_start) > 0.01 or abs(locked.timeline_end - timeline_end) > 0.01:
+        raise TimelinePlanningError(
+            f"Locked segment {segment_id} timing no longer matches the current script units"
+        )
+    if locked.source_end <= locked.source_start:
+        raise TimelinePlanningError(f"Locked segment {segment_id} has an invalid source range")
+    return replace(
+        locked,
+        timeline_start=round(timeline_start, 3),
+        timeline_end=round(timeline_end, 3),
+        locked=True,
+        review_status="approved" if locked.review_status == "unreviewed" else locked.review_status,
+    )
+
+
 def plan_timeline(
     project_id: str,
     units: list[ScriptUnit],
     intents: list[VisualIntent],
     candidates_by_unit: dict[str, list[CandidateClip]],
     rules: MixingRules,
+    locked_segments: dict[str, TimelineSegment] | None = None,
 ) -> Timeline:
     if not units:
         raise TimelinePlanningError("No script units supplied")
@@ -107,6 +152,7 @@ def plan_timeline(
     if missing_intents:
         raise TimelinePlanningError(f"Missing visual intents: {missing_intents}")
 
+    locked_segments = locked_segments or {}
     project_duration = round(max(unit.end for unit in units), 3)
     segments: list[TimelineSegment] = []
     warnings: list[str] = []
@@ -128,6 +174,28 @@ def plan_timeline(
                 unit.end - unit_cursor if part_index == part_count - 1 else part_duration,
                 3,
             )
+            timeline_end = round(unit_cursor + segment_duration, 3)
+            segment_id = f"S{len(segments) + 1:03d}"
+            locked = locked_segments.get(segment_id)
+            if locked is not None:
+                segment = _validate_locked_segment(
+                    locked,
+                    segment_id=segment_id,
+                    unit=unit,
+                    timeline_start=unit_cursor,
+                    timeline_end=timeline_end,
+                )
+                segments.append(segment)
+                if segment.clip_id:
+                    used_clip_ids.add(segment.clip_id)
+                recent_sources.append(segment.source_id)
+                source_seconds[segment.source_id] += segment_duration
+                unit_cursor = timeline_end
+                continue
+
+            next_segment_id = f"S{len(segments) + 2:03d}"
+            next_locked = locked_segments.get(next_segment_id)
+            forbidden_sources = {next_locked.source_id} if next_locked else set()
             candidate = _choose_candidate(
                 unit_candidates,
                 used_clip_ids,
@@ -136,9 +204,15 @@ def plan_timeline(
                 project_duration,
                 segment_duration,
                 rules,
+                forbidden_sources=forbidden_sources,
             )
             if candidate is None:
-                candidate = _relaxed_choice(unit_candidates, used_clip_ids, recent_sources)
+                candidate = _relaxed_choice(
+                    unit_candidates,
+                    used_clip_ids,
+                    recent_sources,
+                    forbidden_sources=forbidden_sources,
+                )
                 if candidate is None:
                     raise TimelinePlanningError(f"Unable to select media for {unit.unit_id}")
                 warnings.append(
@@ -149,12 +223,11 @@ def plan_timeline(
             usable_duration = min(segment_duration, clip.duration)
             source_start = clip.source_start
             source_end = round(source_start + usable_duration, 3)
-            timeline_end = round(unit_cursor + segment_duration, 3)
             speed = round(usable_duration / segment_duration, 4) if segment_duration > 0 else 1.0
             speed = max(0.5, min(2.0, speed))
 
             segment = TimelineSegment(
-                segment_id=f"S{len(segments) + 1:03d}",
+                segment_id=segment_id,
                 unit_id=unit.unit_id,
                 timeline_start=round(unit_cursor, 3),
                 timeline_end=timeline_end,
@@ -174,6 +247,12 @@ def plan_timeline(
             recent_sources.append(clip.source_id)
             source_seconds[clip.source_id] += segment_duration
             unit_cursor = timeline_end
+
+    unknown_locked = sorted(set(locked_segments) - {segment.segment_id for segment in segments})
+    if unknown_locked:
+        raise TimelinePlanningError(
+            f"Locked segments do not exist in the replanned timeline: {', '.join(unknown_locked)}"
+        )
 
     source_counts = Counter(segment.source_id for segment in segments)
     if len(source_counts) < rules.minimum_source_count:
