@@ -131,6 +131,9 @@ def main(argv: list[str] | None = None) -> int:
         status_counts: dict[str, int] = {}
         for source in sources:
             status_counts[source.status] = status_counts.get(source.status, 0) + 1
+        original_duration = sum(source.duration for source in sources)
+        indexed_duration = sum(source.indexed_duration for source in sources)
+        ignored_tail = sum(source.ignored_tail_seconds for source in sources)
         result = {
             "database": config.database_path,
             "source_count": len(sources),
@@ -138,7 +141,12 @@ def main(argv: list[str] | None = None) -> int:
             "clip_count": len(clips),
             "clip_with_audio_count": sum(clip.has_audio for clip in clips),
             "source_status": status_counts,
-            "duration_seconds": round(sum(source.duration for source in sources), 3),
+            "duration_seconds": round(original_duration, 3),
+            "original_duration_seconds": round(original_duration, 3),
+            "indexed_duration_seconds": round(indexed_duration, 3),
+            "ignored_tail_seconds": round(ignored_tail, 3),
+            "capped_source_count": sum(source.ignored_tail_seconds > 0 for source in sources),
+            "maximum_source_process_seconds": config.media_scan.maximum_source_process_seconds,
             "missing_source_files": sum(not Path(source.source_path).exists() for source in sources),
             "thumbnail_count": sum(bool(clip.thumbnail_path) for clip in clips),
             "analyzed_clip_count": sum(
