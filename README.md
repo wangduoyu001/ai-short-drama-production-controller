@@ -18,6 +18,8 @@ short_drama_controller/script_mixer/
 - FFmpeg、FFprobe、Ollama、Whisper CLI、ComfyUI 模型目录和常见模型缓存自动发现
 - 软件和模型路径默认留空，不提交本机绝对路径
 - 本地视频目录增量扫描
+- 每个原视频默认只处理前40秒，超过部分不切镜、不分析、不向量化
+- 原视频总时长、实际入库时长和忽略尾部分开记录
 - FFprobe 元数据和原视频音轨识别
 - FFmpeg 场景切分和固定窗口回退
 - 镜头关键帧缩略图
@@ -39,6 +41,12 @@ short_drama_controller/script_mixer/
 
 ```text
 docs/script-driven-mixer.md
+```
+
+后续开发路线：
+
+```text
+docs/script-mixer-next-development-plan.md
 ```
 
 ## v0.5 能力
@@ -71,6 +79,11 @@ docs/script-driven-mixer.md
 输入文案，可选真实配音，输出：
 
 ```text
+本地原视频
+→ 每个素材只取前40秒处理窗口
+→ 场景切分和视觉分析
+→ 本地素材库
+
 文案
 → 语义单元
 → 可选Whisper真实时间轴
@@ -82,6 +95,8 @@ docs/script-driven-mixer.md
 → 时间线与审核报告
 → FFmpeg预览成片
 ```
+
+40秒限制针对每个原始素材，不限制最终成片时长。最终视频仍可组合多个来源。
 
 它是独立的本地粗剪子系统，不改变短剧导演物料链的输出契约。
 
@@ -265,6 +280,16 @@ script-driven-mixer init-config --out script_mixer.local.json
 
 所有模型名称默认留空，通过本地能力和缓存自动选择。配置文件已被 `.gitignore` 忽略。
 
+默认源视频窗口：
+
+```json
+{
+  "media_scan": {
+    "maximum_source_process_seconds": 40.0
+  }
+}
+```
+
 ### 2. 扫描软件和模型目录
 
 ```bash
@@ -316,7 +341,7 @@ script-driven-mixer --config script_mixer.local.json scan-media \
   --fast
 ```
 
-快速模式使用固定窗口切镜，不做场景检测和缩略图。之后直接运行普通扫描即可自动升级。
+快速模式使用固定窗口切镜，不做场景检测和缩略图，但同样只处理每个素材的前40秒。之后直接运行普通扫描即可自动升级。
 
 可选：
 
@@ -333,7 +358,14 @@ script-driven-mixer --config script_mixer.local.json scan-media \
 script-driven-mixer --config script_mixer.local.json catalog-status
 ```
 
-显示原视频、音轨、镜头、总时长、缩略图、视觉分析和向量缓存数量。
+显示：
+
+- 原视频与镜头数量。
+- 原始素材总时长。
+- 实际入库总时长。
+- 被忽略尾部总时长。
+- 被40秒规则截断的素材数量。
+- 音轨、缩略图、视觉分析和向量缓存数量。
 
 ### 7. 分析关键帧
 
@@ -342,7 +374,7 @@ script-driven-mixer --config script_mixer.local.json enrich-media --limit 100
 script-driven-mixer --config script_mixer.local.json enrich-media
 ```
 
-视觉模型写入主体、场景、动作、情绪、标签、景别、镜头运动、水印和画质。
+视觉模型写入主体、场景、动作、情绪、标签、景别、镜头运动、水印和画质。由于素材库不存在40秒后的镜头，视觉分析不会读取尾部。
 
 ### 8. 构建素材向量
 
@@ -444,6 +476,7 @@ script-driven-mixer --config script_mixer.local.json plan \
 
 | 规则 | 默认值 |
 |---|---:|
+| 单个原视频处理窗口 | 前40秒 |
 | 画幅 | 1080×1920 |
 | 帧率 | 30 |
 | 最少原素材来源 | 8 |
@@ -494,6 +527,15 @@ warnings 规则放宽和风险
 allow_final_export 是否允许正式导出
 ```
 
+素材库状态额外记录：
+
+```text
+original_duration_seconds 原始总时长
+indexed_duration_seconds 实际入库时长
+ignored_tail_seconds 忽略尾部时长
+capped_source_count 被40秒限制截断的素材数
+```
+
 Whisper 只提供时间证据。字幕正文始终使用用户输入原文，不使用识别错字覆盖原稿。
 
 # Codex Skill 目录
@@ -525,6 +567,14 @@ pytest -q tests/test_script_mixer*.py
 ```
 
 专项测试不依赖网络、FFmpeg、FFprobe、Ollama、Whisper、真实模型或私人素材。GitHub Actions 在 Python 3.10 和 3.12 下执行。
+
+当前测试还验证：
+
+- 95秒素材只入库前40秒。
+- 所有镜头 `source_end <= 40.0`。
+- 场景检测命令包含40秒终止参数。
+- 切换配置后旧索引自动升级。
+- 快速扫描和完整扫描都遵守40秒规则。
 
 # 版权安全
 
