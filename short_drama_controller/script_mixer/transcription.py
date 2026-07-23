@@ -422,10 +422,16 @@ def align_script_to_transcription(
             _char, start, end = timed[transcript_index]
             anchor_times.setdefault(script_index, []).append(start)
             anchor_times.setdefault(script_index + 1, []).append(end)
-    anchors = sorted(
-        (position, sum(values) / len(values))
-        for position, values in anchor_times.items()
-    )
+    anchors: list[tuple[int, float]] = []
+    for position, values in sorted(anchor_times.items()):
+        if position == 0:
+            value = 0.0
+        elif position == len(script_chars):
+            value = duration
+        else:
+            value = sum(values) / len(values)
+        anchors.append((position, value))
+
     monotonic: list[tuple[int, float]] = []
     last_time = 0.0
     for position, value in anchors:
