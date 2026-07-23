@@ -49,6 +49,10 @@ This repository produces a director-ready material package for AI short drama an
 18. Changing `media_scan.maximum_source_process_seconds` must invalidate and rebuild incompatible source clip indexes without requiring database deletion.
 19. Whisper may provide timing evidence but must not replace the user's script text with recognition output.
 20. Default model-download behavior remains disabled. Any download-capable behavior must require explicit local configuration.
+21. `integration-check` must separate `environment_ready`, `ready_for_real_trial`, and `trial_completed`; do not collapse them into one success flag.
+22. Expensive integration operations such as full media scan, semantic enrichment, embeddings, Whisper, and real rendering must require explicit user arguments.
+23. Integration reports must be written incrementally and include remediation rather than only exception traces.
+24. A real acceptance run must verify no timeline segment references source media beyond the configured processing window.
 
 ## Output priorities / 输出优先级
 
@@ -76,7 +80,8 @@ Runtime catalog reports should remain in `.runtime/script_mixer/`:
 2. `last_scan.json`
 3. `last_enrichment.json`
 4. `last_embeddings.json`
-5. `media.db`
+5. `integration_report.json`
+6. `media.db`
 
 ## Code changes / 代码修改
 
@@ -93,4 +98,4 @@ script-driven-mixer doctor
 
 - A `BLOCKER` must prevent export.
 - New tests must be deterministic and must not require network access, installed media software, real models, or private local files.
-- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, and `config/script_mixer.example.json` aligned with implementation.
+- Keep `README.md`, `docs/script-driven-mixer.md`, `docs/script-mixer-next-development-plan.md`, `docs/script-mixer-integration-check.md`, `config/script_mixer.example.json`, and `config/script_mixer.integration-checklist.example.json` aligned with implementation.
