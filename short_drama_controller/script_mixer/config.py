@@ -143,6 +143,28 @@ class IntegrationConfig:
 
 
 @dataclass(slots=True)
+class EditPackageConfig:
+    output_dir_name: str = "jianying_package"
+    handle_before_seconds: float = 1.0
+    handle_after_seconds: float = 1.0
+    candidate_export_count: int = 3
+    export_source_audio_stems: bool = True
+    export_narration_wav: bool = True
+    export_subtitles: bool = True
+    video_codec: str = "libx264"
+    video_preset: str = "medium"
+    video_crf: int = 18
+    audio_codec: str = "pcm_s16le"
+    sample_rate: int = 48000
+    channels: int = 2
+    clean_stale_files: bool = False
+    create_jianying_draft: bool = True
+    require_jianying_draft: bool = False
+    jianying_draft_root: str = ""
+    jianying_draft_name_prefix: str = "AI粗剪"
+
+
+@dataclass(slots=True)
 class RuntimeConfig:
     discovery: DiscoveryConfig = field(default_factory=DiscoveryConfig)
     media_scan: MediaScanConfig = field(default_factory=MediaScanConfig)
@@ -152,6 +174,7 @@ class RuntimeConfig:
     subtitles: SubtitleConfig = field(default_factory=SubtitleConfig)
     mixing: MixingRules = field(default_factory=MixingRules)
     integration: IntegrationConfig = field(default_factory=IntegrationConfig)
+    edit_package: EditPackageConfig = field(default_factory=EditPackageConfig)
     database_path: str = ".runtime/script_mixer/media.db"
     discovery_report_path: str = ".runtime/script_mixer/discovery.json"
     output_root: str = "outputs/script_mixer"
