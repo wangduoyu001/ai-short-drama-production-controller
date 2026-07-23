@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .catalog import MediaCatalog, import_manifest
 from .config import load_config, write_default_config
+from .integration import IntegrationChecker
 from .pipeline import ScriptMixerPipeline
 from .script_parser import load_script
 
@@ -25,6 +26,43 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("models", help="读取Ollama和Whisper模型、能力与自动选择结果")
     subparsers.add_parser("init-db", help="初始化素材SQLite数据库")
     subparsers.add_parser("catalog-status", help="显示已入库原视频、镜头、音轨和向量数量")
+
+    integration = subparsers.add_parser(
+        "integration-check",
+        help="执行真实电脑环境、字幕、编码、素材边界和可选试剪验收",
+    )
+    integration.add_argument("--media-root", help="真实本地素材目录；提供后执行增量扫描和40秒边界检查")
+    integration.add_argument("--script", help="真实试剪使用的UTF-8文案文件")
+    integration.add_argument("--voice", help="真实试剪使用的配音音频；未提供时使用原视频音频")
+    integration.add_argument(
+        "--full-media-scan",
+        action="store_true",
+        help="对素材执行完整场景检测和缩略图生成；默认使用快速增量扫描",
+    )
+    integration.add_argument(
+        "--force-media-scan",
+        action="store_true",
+        help="强制重新分析真实素材，不复用未变化记录",
+    )
+    integration.add_argument(
+        "--run-trial",
+        action="store_true",
+        help="完成基础检查后运行真实时间线规划、字幕和MP4渲染",
+    )
+    integration.add_argument(
+        "--trial-duration",
+        type=float,
+        help="没有真实配音时的试剪时长，默认使用配置中的30秒",
+    )
+    integration.add_argument(
+        "--no-transcribe-trial",
+        action="store_true",
+        help="真实配音试剪时不调用Whisper，改用比例时间轴",
+    )
+    integration.add_argument(
+        "--report",
+        help="集成报告输出路径；默认.runtime/script_mixer/integration_report.json",
+    )
 
     scan = subparsers.add_parser("scan-media", help="扫描本地视频目录并增量写入素材库")
     scan.add_argument("--root", required=True, help="本地原始视频目录")
@@ -156,6 +194,22 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
+
+    if args.command == "integration-check":
+        report = IntegrationChecker(pipeline).run(
+            media_root=args.media_root,
+            script_path=args.script,
+            voice_path=args.voice,
+            full_media_scan=args.full_media_scan,
+            force_media_scan=args.force_media_scan,
+            run_trial=args.run_trial,
+            trial_duration=args.trial_duration,
+            transcribe_trial=not args.no_transcribe_trial,
+            report_path=args.report,
+        )
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        success = report.trial_completed if args.run_trial else report.environment_ready
+        return 0 if success else 1
 
     if args.command == "scan-media":
         summary = pipeline.scan_media(
