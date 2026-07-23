@@ -1,496 +1,255 @@
 # AI Short Drama Production Controller / AI短剧生产控制器
 
-版本：`0.6.0`
+版本：`0.7.0-dev`
 
-面向 AI 短剧、AI 漫剧和本地信息流混剪的生产控制器与 Codex Skill。它不是一个写着“一键成片”却把问题藏进按钮里的演示，而是把剧本、资产、镜头、提示词和本地素材粗剪拆成可执行、可返修、可审核的生产流程。
+本仓库包含两条独立生产链：
 
-## v0.6 更新
+1. **AI短剧导演物料链**：剧本、资产、生成片段、分镜、提示词、QA和导出。
+2. **文案驱动本地混剪链**：本地素材自动粗剪、真实配音、Whisper字幕、人工返修和剪映可编辑工程。
 
-新增独立的文案驱动本地混剪模块：
-
-```text
-short_drama_controller/script_mixer/
-```
-
-当前已实现：
-
-- `script-driven-mixer` 命令行入口
-- FFmpeg、FFprobe、Ollama、Whisper CLI、ComfyUI 模型目录和常见模型缓存自动发现
-- 软件和模型路径默认留空，不提交本机绝对路径
-- 本地视频目录增量扫描
-- 每个原视频默认只处理前40秒，超过部分不切镜、不分析、不向量化
-- 原视频总时长、实际入库时长和忽略尾部分开记录
-- FFprobe 元数据和原视频音轨识别
-- FFmpeg 场景切分和固定窗口回退
-- 镜头关键帧缩略图
-- SQLite 原视频、镜头、使用历史和向量缓存
-- Ollama 文本、视觉和嵌入模型能力检测与自动选择
-- 文案转直接画面、隐喻画面、情绪、标签、景别和负向约束
-- 关键帧视觉描述、水印识别和画质评分
-- 镜头语义向量增量构建
-- 词义、标签、情绪、景别、向量、画质和历史使用融合检索
-- 多来源时间线编排
-- 相邻同源、来源冷却、单来源占比和低匹配审核
-- 真实配音、原视频音频、二者混合和静音模式
-- 本地 Whisper 词级时间戳和用户原文对齐
-- SRT、ASS 和逐字卡拉OK ASS 字幕
-- FFmpeg 音频混合、自动压低、字幕烧录和预览成片
-- Python 3.10/3.12 CI 测试工作流
-
-详细开发契约：
+当前本地混剪的最终交付不是只有一条压平的MP4，而是：
 
 ```text
-docs/script-driven-mixer.md
+预览final.mp4
++
+独立可拖动镜头
++
+独立原声
++
+完整配音
++
+可编辑字幕
++
+每个镜头的备用候选
++
+可选剪映草稿
 ```
 
-后续开发路线：
+AI负责完成第一版粗剪，人最终在剪映里调整切点、替换画面、修改字幕、声音和节奏。把自动识别当成永不犯错的神谕，属于一种昂贵的乐观。
+
+---
+
+# 最快开始：Windows + Codex + 剪映
+
+## 1. 让Codex拉取仓库
+
+```bash
+git clone https://github.com/wangduoyu001/ai-short-drama-production-controller.git
+cd ai-short-drama-production-controller
+git checkout feature/script-driven-local-mixer
+```
+
+PR合并后直接使用默认分支即可，不再需要最后一行。
+
+## 2. 一键安装
+
+在仓库根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_jianying_windows.ps1
+```
+
+需要脚本同时尝试安装FFmpeg：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup_jianying_windows.ps1 -InstallMissingTools
+```
+
+安装内容：
 
 ```text
-docs/script-mixer-next-development-plan.md
+Python项目
+剪映草稿可选适配器
+本地配置
+SQLite素材库
+环境检查
+剪映草稿目录检查
 ```
 
-## v0.5 能力
+手工安装等价命令：
 
-- Codex 原生 Skill：`.agents/skills/ai-short-drama-controller/`
-- 项目级 `AGENTS.md`
-- 资产、故事板、动作打戏执行契约
-- `doctor` 环境与 Skill 自检
-- 明确 `episode 单集` 与 `generation_clip 生成片段` 层级
-- 保留 Python CLI、QA 阻断、返修覆盖和导出结构
-
-## 两条独立生产链
-
-### AI 短剧导演物料链
-
-输入小说、剧本、口述创意或半成品提示词，输出：
-
-1. 可阅读分集剧本
-2. 人物、场景和道具资产锁定
-3. 4-15 秒生成片段计划
-4. 镜头执行表与故事板
-5. 动作轨迹、机位、轴线、发力和受力设计
-6. 首帧、图片、视频、尾帧、声音、负面和备用提示词
-7. QA 报告与可导出物料
-
-它不会凭空替你调用 Seedance、即梦、可灵、Veo 或其他外部平台。平台是否接入，以仓库是否存在真实集成代码为准。
-
-### 文案驱动本地混剪链
-
-输入文案，可选真实配音，输出：
-
-```text
-本地原视频
-→ 每个素材只取前40秒处理窗口
-→ 场景切分和视觉分析
-→ 本地素材库
-
-文案
-→ 语义单元
-→ 可选Whisper真实时间轴
-→ 画面意图
-→ 本地素材检索
-→ 多来源编排
-→ 音频混合
-→ SRT/ASS/逐字字幕
-→ 时间线与审核报告
-→ FFmpeg预览成片
+```bash
+python -m pip install -e ".[jianying]"
+script-driven-mixer init-config --out script_mixer.local.json
+script-driven-mixer --config script_mixer.local.json init-db
+script-driven-mixer --config script_mixer.local.json integration-check
+script-driven-mixer --config script_mixer.local.json jianying-status
 ```
-
-40秒限制针对每个原始素材，不限制最终成片时长。最终视频仍可组合多个来源。
-
-它是独立的本地粗剪子系统，不改变短剧导演物料链的输出契约。
-
-## 核心短剧生产层级
-
-```text
-episode 单集（通常2-3分钟）
-  -> scene 场
-    -> generation_clip 生成片段（4-15秒，通常10-15秒）
-      -> shot 镜头
-```
-
-15 秒限制针对一次视频生成片段，不是完整一集。把两者混在一起，时长、分镜和剪辑会一起变成一锅很有技术感的粥。
-
-## 安装
 
 需要 Python 3.10 或更高版本。
 
-```bash
-python -m pip install -e .
-```
+## 3. 查看剪映草稿目录
 
-安装后提供三个入口：
+剪映专业版：
 
 ```text
-short-drama-controller
-short-drama-controller-v02
-script-driven-mixer
+全局设置 → 草稿位置
 ```
 
-## Codex App / Codex CLI
-
-Codex 会读取：
-
-```text
-AGENTS.md
-.agents/skills/ai-short-drama-controller/SKILL.md
-```
-
-显式调用短剧 Skill：
-
-```text
-$ai-short-drama-controller
-```
-
-示例：
-
-```text
-$ai-short-drama-controller
-把我提供的小说改成3分钟一集的AI漫剧剧本。
-本次只做剧本改写，不生成资产和分镜。
-画幅16:9，写实古装武侠电影质感。
-```
-
-Skill 默认关闭隐式调用，避免普通讨论突然生成十几份生产文件。
-
-# AI短剧控制器
-
-## 自检
-
-```bash
-short-drama-controller-v02 doctor
-```
-
-检查：
-
-- Python 版本
-- CLI 主入口
-- 根目录 `AGENTS.md`
-- Codex Skill YAML frontmatter
-- `agents/openai.yaml`
-
-## 主流程命令
-
-```bash
-short-drama-controller-v02 init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
-short-drama-controller-v02 qa --project demo_v02
-short-drama-controller-v02 repair --project demo_v02
-short-drama-controller-v02 repair --project demo_v02 --shot SH005
-short-drama-controller-v02 export --project demo_v02
-short-drama-controller-v02 grid --project demo_v02 --shot SH005
-```
-
-未安装时：
-
-```bash
-python -m short_drama_controller.v02_full_cli doctor
-python -m short_drama_controller.v02_full_cli init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
-python -m short_drama_controller.v02_full_cli qa --project demo_v02
-python -m short_drama_controller.v02_full_cli repair --project demo_v02
-python -m short_drama_controller.v02_full_cli export --project demo_v02
-python -m short_drama_controller.v02_full_cli grid --project demo_v02 --shot SH005
-```
-
-## 短剧主流程
-
-```text
-chapter_intake 章节解析
-story_events 事件链
-characters 角色列表
-scenes 场景列表
-props 道具列表
-world_bible 世界观
-style_bible 风格圣经
-asset_lock 资产锁定
-beat_map 剧情节拍表
-clip_plan 生成片段计划
-shot_plan 分镜计划
-coverage_qa 关键实体覆盖QA
-```
-
-分镜必须基于：
-
-```text
-story_events -> beat_map -> clip_plan -> shot_plan
-```
-
-每个镜头保留：
-
-```text
-source_quote 原文证据
-event_id 事件编号
-beat_id 节拍编号
-clip_id 生成片段编号
-scene_id 场景编号
-character_id 角色编号
-prop_id 道具编号
-entry_pose 起始姿态
-exit_pose 结束姿态
-motion_path 运动轨迹
-```
-
-动作镜头还必须包含：
-
-```text
-attack_line 攻击线
-defense_line 防守线
-contact_point 接触点
-force_direction 受力方向
-body_response 身体反馈
-reset_position 复位站位
-fallback_shot 备用镜头
-```
-
-## 分阶段执行
-
-```text
-rewrite 剧本改写
-assets 资产提取
-clips 生成片段拆分
-storyboard 故事板
-prompts 生成提示词
-qa 质检返修
-export 导出
-```
-
-只执行用户明确要求的阶段。用户只要视频提示词时，不附赠人物小传、行业感悟和另外八份 Markdown。文档数量不等于生产力，虽然很多项目努力假装是。
-
-## QA Gate
-
-`export` 前自动运行 QA。存在 `BLOCKER` 时禁止导出。
-
-```text
-qa_status 质检状态
-allow_export 允许导出
-blocker_count 阻塞问题数
-warning_count 警告问题数
-```
-
-返修覆盖原目标文件或镜头，禁止生成 `final_v2`、`fixed`、`最新版` 等重复文件。
-
-# 文案驱动本地混剪
-
-## 第一次在实际电脑运行
-
-### 1. 生成本地配置
-
-```bash
-script-driven-mixer init-config --out script_mixer.local.json
-```
-
-所有模型名称默认留空，通过本地能力和缓存自动选择。配置文件已被 `.gitignore` 忽略。
-
-默认源视频窗口：
+可以写入本地配置：
 
 ```json
 {
-  "media_scan": {
-    "maximum_source_process_seconds": 40.0
+  "edit_package": {
+    "jianying_draft_root": "D:/JianyingPro Drafts"
   }
 }
 ```
 
-### 2. 扫描软件和模型目录
+本地配置被 `.gitignore` 忽略，不会把你的电脑路径提交到仓库。
 
-```bash
-script-driven-mixer --config script_mixer.local.json doctor
+## 4. 一键生成剪映项目
+
+有真实配音：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_jianying_project.ps1 `
+  -MediaRoot "D:\视频素材" `
+  -Script "input.txt" `
+  -Voice "voice.wav" `
+  -DraftRoot "D:\JianyingPro Drafts"
 ```
 
-检查：
+没有配音，保留原视频声音：
 
-- FFmpeg 与 FFprobe
-- Ollama
-- Whisper CLI
-- Python、Git、NVIDIA SMI
-- Ollama、Hugging Face、Whisper 和 ComfyUI 模型目录
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_jianying_project.ps1 `
+  -MediaRoot "D:\视频素材" `
+  -Script "input.txt" `
+  -DraftRoot "D:\JianyingPro Drafts"
+```
 
-结果：
+第一次只验证链路，不运行Ollama视觉模型和向量：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_jianying_project.ps1 `
+  -MediaRoot "D:\视频素材" `
+  -Script "input.txt" `
+  -Voice "voice.wav" `
+  -SkipModels
+```
+
+等价CLI：
+
+```bash
+script-driven-mixer --config script_mixer.local.json make-jianying-project \
+  --media-root "D:/视频素材" \
+  --script input.txt \
+  --voice voice.wav \
+  --audio-mode mixed \
+  --draft-root "D:/JianyingPro Drafts" \
+  --candidate-count 3 \
+  --handle-before 1 \
+  --handle-after 1 \
+  --burn-subtitles
+```
+
+---
+
+# 最终流程
 
 ```text
-.runtime/script_mixer/discovery.json
+本地视频素材
+        │
+        ├─ 每个原视频只处理前40秒
+        ├─ FFprobe读取时长、画幅、帧率和音轨
+        ├─ FFmpeg场景切分
+        ├─ 缩略图和视觉描述
+        └─ 本地语义向量
+        │
+        ▼
+本地素材库
+        │
+文案 + 可选真实配音
+        │
+        ├─ 文案拆成时间单元
+        ├─ Whisper提供词级时间
+        ├─ 用户原文与时间对齐
+        ├─ 理解每段需要的画面
+        └─ 多来源镜头检索
+        │
+        ▼
+自动粗剪时间线
+        │
+        ├─ final.mp4快速预览
+        ├─ review.json审核清单
+        ├─ 可替换、锁定、回退
+        └─ 剪映可编辑包
+        │
+        ▼
+剪映人工调整
+        │
+        ├─ 拖动镜头边缘
+        ├─ 修改切点和顺序
+        ├─ 从候选目录替换画面
+        ├─ 修改字幕
+        ├─ 调整配音和原声
+        ├─ 添加音乐、音效和转场
+        └─ 正式导出
 ```
 
-### 3. 查看模型能力
+---
 
-```bash
-script-driven-mixer --config script_mixer.local.json models
-```
+# 为什么在剪映里可以自由修改
 
-显示 Ollama 模型能力，以及 Whisper CLI、本地权重和自动选择结果。默认不自动下载 Whisper 模型。
-
-### 4. 初始化素材数据库
-
-```bash
-script-driven-mixer --config script_mixer.local.json init-db
-```
-
-### 5. 扫描素材目录
-
-完整扫描：
-
-```bash
-script-driven-mixer --config script_mixer.local.json scan-media \
-  --root "D:/Media/InformationFlow"
-```
-
-大素材库先快速入库：
-
-```bash
-script-driven-mixer --config script_mixer.local.json scan-media \
-  --root "D:/Media/InformationFlow" \
-  --fast
-```
-
-快速模式使用固定窗口切镜，不做场景检测和缩略图，但同样只处理每个素材的前40秒。之后直接运行普通扫描即可自动升级。
-
-可选：
+系统选择的源区间例如：
 
 ```text
---force          强制重新分析
---prune-missing  清理已从该目录删除的数据库索引
+5秒 ～ 8秒
 ```
 
-原视频始终只读。`--prune-missing` 不删除磁盘文件。
+编辑包默认导出：
 
-### 6. 检查素材库
-
-```bash
-script-driven-mixer --config script_mixer.local.json catalog-status
+```text
+4秒 ～ 9秒
 ```
 
-显示：
+于是剪映片段中保留：
 
-- 原视频与镜头数量。
-- 原始素材总时长。
-- 实际入库总时长。
-- 被忽略尾部总时长。
-- 被40秒规则截断的素材数量。
-- 音轨、缩略图、视觉分析和向量缓存数量。
-
-### 7. 分析关键帧
-
-```bash
-script-driven-mixer --config script_mixer.local.json enrich-media --limit 100
-script-driven-mixer --config script_mixer.local.json enrich-media
+```text
+前1秒余量
+系统选中3秒
+后1秒余量
 ```
 
-视觉模型写入主体、场景、动作、情绪、标签、景别、镜头运动、水印和画质。由于素材库不存在40秒后的镜头，视觉分析不会读取尾部。
+你可以向前或向后拖动边缘，而不需要重新定位原始长视频。
 
-### 8. 构建素材向量
+余量仍受40秒限制。例如系统选中38～40秒时：
 
-```bash
-script-driven-mixer --config script_mixer.local.json build-embeddings \
-  --limit 500 \
-  --batch-size 32
-
-script-driven-mixer --config script_mixer.local.json build-embeddings
+```text
+实际导出：37～40秒
+后余量：0秒
 ```
 
-缓存按 `clip_id + embedding_model + content_hash` 管理。内容未变化时不会重复计算。
+不会为了方便修改，把40秒后的内容偷偷放回来。
 
-## 常用剪辑命令
+---
 
-### 保留原视频音频
+# 如何降低卡帧、跳帧和黑帧
 
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --duration 30 \
-  --audio-mode source \
-  --project-id source_demo \
-  --render
+剪映编辑包不会使用简单的关键帧附近无损截取，而是重新解码和编码：
+
+```text
+固定帧率CFR
+H.264
+统一项目分辨率
+统一项目帧率
+统一像素格式yuv420p
+精确源时间解码
 ```
 
-### 使用真实配音并自动逐句对齐
+主要解决：
 
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode narration \
-  --voice voice.wav \
-  --project-id narration_demo \
-  --render
-```
+- 手机可变帧率造成时间漂移。
+- 不同帧率、编码直接拼接造成卡顿。
+- 非关键帧开始造成黑帧、首帧停顿或花屏。
+- 异常时间戳造成音画错位。
 
-### 配音与原声混合，烧录逐字字幕
+这不能把损坏的原素材变健康，也不能保证AI选择的动作切点永远符合导演判断，所以系统同时提供前后余量和备用候选。
 
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode mixed \
-  --voice voice.wav \
-  --burn-subtitles \
-  --project-id mixed_demo \
-  --render
-```
+---
 
-### 复用已有 Whisper JSON
-
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode narration \
-  --voice voice.wav \
-  --transcript-json voice.json \
-  --burn-subtitles \
-  --render
-```
-
-### 指定本地 Whisper 权重
-
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode narration \
-  --voice voice.wav \
-  --whisper-model "D:/Models/Whisper/medium.pt" \
-  --render
-```
-
-### 禁止本次 Whisper 转写
-
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode narration \
-  --voice voice.wav \
-  --no-transcribe \
-  --render
-```
-
-此时仍以配音真实总时长为准，但每句按文案长度比例分配。
-
-### 只生成 FFmpeg 命令
-
-```bash
-script-driven-mixer --config script_mixer.local.json plan \
-  --script input.txt \
-  --audio-mode mixed \
-  --voice voice.wav \
-  --burn-subtitles \
-  --render \
-  --dry-run
-```
-
-## 混剪默认规则
-
-| 规则 | 默认值 |
-|---|---:|
-| 单个原视频处理窗口 | 前40秒 |
-| 画幅 | 1080×1920 |
-| 帧率 | 30 |
-| 最少原素材来源 | 8 |
-| 推荐来源 | 12 |
-| 单来源最大占比 | 15% |
-| 单来源累计时长 | 4秒 |
-| 单段连续镜头 | 3秒 |
-| 最短镜头 | 0.7秒 |
-| 来源再次出现间隔 | 3个镜头 |
-| 低匹配阈值 | 0.45 |
-
-规则无法满足时，时间线保留警告，并在 `report.json` 中阻止正式导出。
-
-## 混剪输出
+# 剪映编辑包输出
 
 ```text
 outputs/script_mixer/<project_id>/
@@ -501,83 +260,327 @@ outputs/script_mixer/<project_id>/
 ├─ transcript.json
 ├─ alignment.json
 ├─ timeline.json
+├─ review.json
 ├─ report.json
 ├─ render_plan.json
 ├─ subtitles/
 │  ├─ captions.srt
 │  ├─ captions.ass
 │  └─ captions.karaoke.ass
+├─ revisions/
 └─ exports/
-   └─ final.mp4
+   ├─ final.mp4
+   └─ jianying_package/
+      ├─ video/
+      │  ├─ S001_....mp4
+      │  ├─ S002_....mp4
+      │  └─ ...
+      ├─ audio/
+      │  ├─ S001_source.wav
+      │  ├─ S002_source.wav
+      │  └─ narration.wav
+      ├─ subtitles/
+      │  ├─ captions.srt
+      │  ├─ captions.ass
+      │  └─ captions.karaoke.ass
+      ├─ candidates/
+      │  ├─ S001/
+      │  ├─ S002/
+      │  └─ ...
+      ├─ metadata/
+      │  ├─ package_manifest.json
+      │  ├─ timeline.csv
+      │  └─ ffmpeg_commands.json
+      └─ 剪映导入与修改说明.txt
 ```
 
-`transcript.json` 和逐字字幕只在成功获得转写时间证据时生成。
+草稿成功时还会在剪映草稿目录生成一个唯一命名的新工程，不覆盖已有草稿。
 
-`report.json` 记录：
+草稿轨道：
 
 ```text
-unique_source_count 唯一来源数量
-highest_single_source_ratio 最高单来源占比
-low_match_segments 低匹配镜头
-source_audio_coverage 原声覆盖率
-timing_source 时间来源
-alignment_coverage 文案转写对齐覆盖率
-subtitle_review_required 字幕是否需要人工复核
-warnings 规则放宽和风险
-allow_final_export 是否允许正式导出
+视频轨：AI粗剪视频
+音频轨：原声
+音频轨：配音
+字幕轨：字幕
 ```
 
-素材库状态额外记录：
+草稿打不开时，标准编辑包仍然完整可用。按S001、S002顺序导入视频，再导入配音和SRT即可。剪映草稿是私有格式，不能把整个工作流的生死交给它。
+
+详细说明：
 
 ```text
-original_duration_seconds 原始总时长
-indexed_duration_seconds 实际入库时长
-ignored_tail_seconds 忽略尾部时长
-capped_source_count 被40秒限制截断的素材数
+docs/jianying-edit-workflow.md
 ```
 
-Whisper 只提供时间证据。字幕正文始终使用用户输入原文，不使用识别错字覆盖原稿。
+---
 
-# Codex Skill 目录
+# 已有项目导出剪映包
+
+```bash
+script-driven-mixer --config script_mixer.local.json export-jianying-package \
+  --project <项目ID> \
+  --draft-root "D:/JianyingPro Drafts"
+```
+
+只要稳定编辑包，不生成草稿：
+
+```bash
+script-driven-mixer --config script_mixer.local.json export-jianying-package \
+  --project <项目ID> \
+  --no-draft
+```
+
+强制重新生成所有代理：
+
+```bash
+--force-package
+```
+
+只查看FFmpeg命令：
+
+```bash
+--package-dry-run
+```
+
+系统按源文件、源区间、余量、目标画幅、帧率和音频规格生成内容哈希。时间线返修后再次导出，只重新生成变化的镜头和候选，未变化资产直接复用。
+
+---
+
+# 人工返修命令
+
+生成审核清单：
+
+```bash
+script-driven-mixer --config script_mixer.local.json review-project \
+  --project <项目ID>
+```
+
+锁定满意镜头：
+
+```bash
+script-driven-mixer --config script_mixer.local.json lock-segment \
+  --project <项目ID> \
+  --segment S002
+```
+
+替换不满意镜头：
+
+```bash
+script-driven-mixer --config script_mixer.local.json replace-segment \
+  --project <项目ID> \
+  --segment S002 \
+  --keyword "手机 创作" \
+  --reason "当前画面与文案不匹配"
+```
+
+保留锁定镜头，重新规划其他镜头：
+
+```bash
+script-driven-mixer --config script_mixer.local.json replan-project \
+  --project <项目ID>
+```
+
+回退最近一次修改：
+
+```bash
+script-driven-mixer --config script_mixer.local.json rollback-project \
+  --project <项目ID>
+```
+
+详细说明：
+
+```text
+docs/script-mixer-review.md
+```
+
+---
+
+# 当前主要能力
+
+## 素材
+
+- 本地目录递归扫描。
+- 文件指纹和增量更新。
+- 每个原视频默认只处理前40秒。
+- 原始时长、入库时长和忽略尾部分开记录。
+- FFprobe元数据和音轨检测。
+- FFmpeg场景切分和固定窗口回退。
+- 缩略图。
+- 原素材只读。
+
+## 模型
+
+- Ollama文本、视觉和嵌入模型自动发现。
+- Whisper CLI和本地权重自动发现。
+- 默认禁止自动下载模型。
+- 缺少模型时明确降级，不阻断规则式粗剪。
+
+## 检索与规划
+
+- 直接画面和隐喻画面意图。
+- 标签、情绪、景别和负向约束。
+- 文本、向量、画质和历史使用融合评分。
+- 相邻同源限制。
+- 来源冷却。
+- 单来源时长和占比审核。
+- 低匹配报告。
+
+## 音频
+
+```text
+auto
+narration
+source
+mixed
+mute
+```
+
+支持：
+
+- 真实配音总时长。
+- 原声按源时间裁切。
+- 无音轨补静音。
+- 配音响度标准化。
+- 原声ducking。
+- 配音和原声分轨导出。
+
+## 字幕
+
+- Whisper词级时间戳。
+- 用户原文与转写时间单调对齐。
+- SRT。
+- ASS。
+- 逐字卡拉OK ASS。
+- Whisper只提供时间，不用识别错字覆盖用户原文。
+
+## 可返修
+
+- 当前镜头ID和候选排名。
+- 锁定、解锁。
+- 单镜头替换。
+- 重新规划时保留锁定镜头。
+- 修改前快照。
+- 回退。
+- 返修后QA报告重建。
+
+## 真实电脑验收
+
+```bash
+script-driven-mixer --config script_mixer.local.json integration-check
+```
+
+检查：
+
+- Python、目录权限、磁盘和SQLite。
+- FFmpeg编码器、滤镜和libass。
+- 中文字幕字体。
+- NVIDIA显卡和显存。
+- Ollama和Whisper。
+- 实际H.264/AAC/ASS合成渲染。
+- 真实素材分类。
+- 40秒边界。
+- 可选真实试剪。
+
+详细说明：
+
+```text
+docs/script-mixer-integration-check.md
+```
+
+---
+
+# AI短剧导演物料链
+
+短剧生产层级：
+
+```text
+episode 单集
+  → scene 场
+    → generation_clip 生成片段（4～15秒）
+      → shot 镜头
+```
+
+主命令：
+
+```bash
+short-drama-controller-v02 doctor
+short-drama-controller-v02 init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
+short-drama-controller-v02 qa --project demo_v02
+short-drama-controller-v02 repair --project demo_v02
+short-drama-controller-v02 export --project demo_v02
+short-drama-controller-v02 grid --project demo_v02 --shot SH005
+```
+
+主流程：
+
+```text
+chapter_intake
+→ story_events
+→ characters / scenes / props
+→ world_bible / style_bible
+→ asset_lock
+→ beat_map
+→ clip_plan
+→ shot_plan
+→ coverage_qa
+```
+
+Codex Skill：
 
 ```text
 .agents/skills/ai-short-drama-controller/
-├─ SKILL.md
-├─ agents/
-│  └─ openai.yaml
-└─ references/
-   ├─ asset-contract.md
-   ├─ storyboard-contract.md
-   └─ action-contract.md
 ```
+
+显式调用：
+
+```text
+$ai-short-drama-controller
+```
+
+存在BLOCKER时禁止正式导出。返修覆盖目标文件，不生成`final_v2`、`fixed`或`最新版`等重复产物。
+
+---
 
 # 测试
 
 ```bash
 pytest -q
+pytest -q tests/test_script_mixer*.py
 python scripts/v02_smoke.py
 short-drama-controller-v02 doctor
 script-driven-mixer --help
 ```
 
-混剪专项：
+自动化测试：
 
-```bash
-pytest -q tests/test_script_mixer*.py
+- Python 3.10和3.12。
+- 不依赖网络、真实FFmpeg、Ollama、Whisper、剪映或私人素材。
+- 使用假执行器验证命令契约。
+- 覆盖40秒边界、Whisper对齐、字幕、集成验收、返修、回退、固定帧率代理、前后余量、候选导出、缓存和剪映轨道。
+
+---
+
+# 关键文档
+
+```text
+docs/script-driven-mixer.md
+docs/script-mixer-integration-check.md
+docs/script-mixer-review.md
+docs/jianying-edit-workflow.md
+docs/script-mixer-next-development-plan.md
 ```
 
-专项测试不依赖网络、FFmpeg、FFprobe、Ollama、Whisper、真实模型或私人素材。GitHub Actions 在 Python 3.10 和 3.12 下执行。
+---
 
-当前测试还验证：
+# 当前边界
 
-- 95秒素材只入库前40秒。
-- 所有镜头 `source_end <= 40.0`。
-- 场景检测命令包含40秒终止参数。
-- 切换配置后旧索引自动升级。
-- 快速扫描和完整扫描都遵守40秒规则。
-
-# 版权安全
-
-参考影视作品时，只学习结构、节奏、镜头逻辑、角色功能和可复用生产模式，不复制角色名称、完整对白、具体情节、身份设定或世界观。
-
-多来源混剪、低文本相似度、短镜头、关闭原声和语义重写都不等于获得版权授权。素材来源、授权状态和最终发布责任必须保留人工审核。
+- AI画面理解和镜头切分不能保证100%符合导演判断。
+- Whisper仍需人工检查错字、断句和专有名词。
+- 固定帧率代理能减少技术性卡帧，但不能修复原素材已经损坏的帧。
+- 剪映草稿格式属于私有格式，版本升级可能影响直接草稿兼容性。
+- 标准MP4、WAV、SRT和CSV编辑包始终保留，作为稳定底座。
+- 背景音乐和音效自动选择尚未完成。
+- TTS自动配音尚未完成。
+- 多来源混剪不等于获得版权授权。
+- 正式发布前必须人工检查画面、声音、字幕、事实和素材权利。
