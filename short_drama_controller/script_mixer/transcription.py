@@ -68,10 +68,19 @@ class TranscriptionResult:
 
 
 @dataclass(slots=True)
+class AlignedToken:
+    unit_id: str
+    text: str
+    start: float
+    end: float
+
+
+@dataclass(slots=True)
 class AlignmentResult:
     units: list[ScriptUnit]
     coverage: float
     timing_source: str
+    tokens: list[AlignedToken] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -80,6 +89,7 @@ class AlignmentResult:
             "timing_source": self.timing_source,
             "warnings": self.warnings,
             "units": [asdict(unit) for unit in self.units],
+            "tokens": [asdict(token) for token in self.tokens],
         }
 
 
@@ -322,14 +332,13 @@ def run_whisper_cli(
     return result
 
 
+def _is_visible_character(char: str) -> bool:
+    category = unicodedata.category(char)
+    return not char.isspace() and not category.startswith(("P", "Z", "S"))
+
+
 def _clean_characters(text: str) -> list[str]:
-    characters: list[str] = []
-    for char in text.casefold():
-        category = unicodedata.category(char)
-        if char.isspace() or category.startswith(("P", "Z", "S")):
-            continue
-        characters.append(char)
-    return characters
+    return [char.casefold() for char in text if _is_visible_character(char)]
 
 
 def _timed_characters(result: TranscriptionResult) -> list[tuple[str, float, float]]:
@@ -366,6 +375,41 @@ def _interpolate(anchors: list[tuple[int, float]], position: int) -> float:
             return left[1] + (right[1] - left[1]) * ratio
         left = right
     return anchors[-1][1]
+
+
+def _build_aligned_tokens(
+    parts: list[str],
+    ranges: list[tuple[int, int]],
+    anchors: list[tuple[int, float]],
+) -> list[AlignedToken]:
+    tokens: list[AlignedToken] = []
+    for index, (part, (char_start, _char_end)) in enumerate(zip(parts, ranges), start=1):
+        unit_id = f"U{index:03d}"
+        visible_position = char_start
+        prefix = ""
+        unit_tokens: list[AlignedToken] = []
+        for char in part:
+            if _is_visible_character(char):
+                start = _interpolate(anchors, visible_position)
+                end = max(start + 0.01, _interpolate(anchors, visible_position + 1))
+                unit_tokens.append(
+                    AlignedToken(
+                        unit_id=unit_id,
+                        text=f"{prefix}{char}",
+                        start=round(start, 3),
+                        end=round(end, 3),
+                    )
+                )
+                prefix = ""
+                visible_position += 1
+            elif unit_tokens:
+                unit_tokens[-1].text += char
+            else:
+                prefix += char
+        if prefix and unit_tokens:
+            unit_tokens[-1].text += prefix
+        tokens.extend(unit_tokens)
+    return tokens
 
 
 def align_script_to_transcription(
@@ -464,4 +508,5 @@ def align_script_to_transcription(
         units=units,
         coverage=round(coverage, 6),
         timing_source="whisper_alignment",
+        tokens=_build_aligned_tokens(parts, ranges, monotonic),
     )
