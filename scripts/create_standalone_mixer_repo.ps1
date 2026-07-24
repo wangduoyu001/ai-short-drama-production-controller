@@ -1,6 +1,6 @@
 param(
     [string]$Owner = "wangduoyu001",
-    [string]$RepoName = "ai-local-video-mixer",
+    [string]$RepoName = "video-Mixed-clip",
     [ValidateSet("public", "private")]
     [string]$Visibility = "public",
     [string]$Target = "",
@@ -116,7 +116,7 @@ if ($RemoteExists) {
     $VisibilityFlag = if ($Visibility -eq "private") { "--private" } else { "--public" }
     & gh repo create $FullRepo `
         $VisibilityFlag `
-        --description "Local script-driven video mixer with editable Jianying delivery" `
+        --description "AI本地视频素材混剪：文案驱动自动粗剪、字幕对齐与剪映可编辑工程" `
         --source $Target `
         --remote origin `
         --push
