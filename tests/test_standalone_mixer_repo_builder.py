@@ -44,14 +44,23 @@ def test_build_standalone_repository_without_short_drama_modules(tmp_path: Path)
         assert "short_drama_controller.script_mixer" not in text
         assert "ai_local_video_mixer" in text
 
-    result = subprocess.run(
+    compile_result = subprocess.run(
         [sys.executable, "-m", "compileall", "-q", "ai_local_video_mixer"],
         cwd=target,
         check=False,
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, result.stderr + result.stdout
+    assert compile_result.returncode == 0, compile_result.stderr + compile_result.stdout
+
+    pytest_result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q"],
+        cwd=target,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert pytest_result.returncode == 0, pytest_result.stderr + pytest_result.stdout
 
 
 def test_builder_refuses_to_overwrite_without_force(tmp_path: Path) -> None:
