@@ -17,7 +17,7 @@ def test_pyproject_entrypoint_points_to_full_cli() -> None:
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
     assert 'version = "0.6.0"' in pyproject
     assert 'short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"' in pyproject
-    assert 'short-drama-controller-v06 = "short_drama_controller.v02_full_cli:main"' in pyproject
+    assert 'short-drama-controller-v06 = "short_drama_controller.v06_cli:main"' in pyproject
     assert "short_drama_controller.v02_cli:main" not in pyproject
 
 
