@@ -13,7 +13,7 @@ dependencies = []
 [project.scripts]
 short-drama-controller = "short_drama_controller.cli:main"
 short-drama-controller-v02 = "short_drama_controller.v02_full_cli:main"
-short-drama-controller-v06 = "short_drama_controller.v02_full_cli:main"
+short-drama-controller-v06 = "short_drama_controller.v06_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["short_drama_controller*"]
