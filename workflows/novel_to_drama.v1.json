@@ -1,0 +1,62 @@
+{
+  "workflow_id": "novel-to-drama.v1",
+  "name": "novel-to-drama 小说到短剧总工作流",
+  "entrypoint": "short-drama-controller-v06 run-all",
+  "execution_policy": {
+    "single_entry": true,
+    "resume_from_state": true,
+    "skip_completed_tasks": true,
+    "default_max_attempts": 3,
+    "human_review_required_before_final_take": true,
+    "paid_actions_default": false,
+    "external_generation_default": false
+  },
+  "stages": [
+    {
+      "id": "chapter_intake",
+      "depends_on": [],
+      "purpose": "Preserve source text and calculate evidence hash."
+    },
+    {
+      "id": "director_package",
+      "depends_on": ["chapter_intake"],
+      "purpose": "Build events, assets, clips, shots, prompts and package QA."
+    },
+    {
+      "id": "asset_render_plan",
+      "depends_on": ["director_package"],
+      "purpose": "Create character full-body, three-view, headshot, scene and prop tasks."
+    },
+    {
+      "id": "storyboard_render_plan",
+      "depends_on": ["asset_render_plan"],
+      "purpose": "Bind locked asset references to storyboard image tasks."
+    },
+    {
+      "id": "video_render_plan",
+      "depends_on": ["storyboard_render_plan"],
+      "purpose": "Create shot video tasks from selected storyboard frames."
+    },
+    {
+      "id": "audio_render_plan",
+      "depends_on": ["director_package"],
+      "purpose": "Create dialogue and narration TTS tasks."
+    },
+    {
+      "id": "assembly_plan",
+      "depends_on": ["video_render_plan", "audio_render_plan"],
+      "purpose": "Create deterministic FFmpeg concat and mix plan."
+    },
+    {
+      "id": "package_qa_export",
+      "depends_on": ["assembly_plan"],
+      "purpose": "Run package QA gate and export generation-ready tables."
+    }
+  ],
+  "owned_boundaries": {
+    "director": "ai-short-drama-production-controller",
+    "image_video_gateway": "comfy-cloud-platform",
+    "assembly": "local ffmpeg",
+    "project_state": "local JSON/YAML-compatible files"
+  }
+}
