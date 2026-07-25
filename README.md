@@ -1,32 +1,124 @@
 # AI Short Drama Production Controller / AI短剧生产控制器
 
-版本：`0.5.0`
+版本：`0.6.0`
 
-面向 AI 短剧与 AI 漫剧生产的流程控制器和 Codex Skill。它不是“一键生成短剧”的玄学按钮，而是把小说、剧本、口述创意或半成品 Prompt / 生成提示词，整理成导演可用的标准化生产物料包。
+面向 AI 短剧与 AI 漫剧生产的导演控制器、Codex Skill 和单入口生产编排器。它把小说、剧本、口述创意或半成品提示词整理成导演物料包，并继续生成资产、分镜、视频、配音和合成任务图。
 
-## v0.5 更新
+当前 `run-all` 会完成本地编排、任务规划和物料导出，不会在未配置真实 Provider 时冒充已经生成图片、视频或最终成片。
 
-- 新增 Codex 原生 Skill：`.agents/skills/ai-short-drama-controller/`
-- 新增项目级 `AGENTS.md`
-- 新增资产、故事板、动作打戏三套执行契约
-- 新增 `doctor` 环境与 Skill 自检命令
-- 明确 `episode 单集` 与 `generation_clip 生成片段` 的层级
-- 关闭 Skill 隐式调用，避免普通聊天误触发整条生产流程
-- 保持原有 Python CLI、QA 阻断、返修覆盖和导出结构
+## v0.6 更新
 
-## 最终交付是什么
+- 新增 `novel-to-drama.v1` 单入口总工作流。
+- 新增 `run-all` 和 `workflow-status` 命令。
+- 新增 `workflow.json` 断点状态、原文 SHA256 和阶段证据。
+- 新增 `production_tasks.json`，统一描述人物资产、场景、道具、分镜图、分镜视频、TTS 和合成任务。
+- 新增跳过已完成、失败重试、版本候选和人工选片策略。
+- 新增 `assembly_plan.json`，输出确定性的 FFmpeg 拼接计划。
+- 图像与视频任务统一路由到自有 `comfy-cloud-platform`，不绑定第三方短剧软件。
+- 参考并改造 LumenX、LocalMiniDrama 的 MIT 许可实现，来源记录在 `THIRD_PARTY_NOTICES.md`。
+- 未复制 ArcReel 的 AGPL 源码，也未复制 Toonflow 受补充商业条款约束的核心源码。
 
-本项目最终交付的是一个可继续返修的导演物料包：
+## 单入口总工作流
 
-1. 可阅读的分集剧本
-2. 人物、场景、道具资产锁定与完整生图提示词
-3. 4-15秒生成片段计划
-4. 镜头执行表与故事板
-5. 动作轨迹、机位、轴线、发力和受力设计
-6. 首帧、图片、视频、尾帧、声音、负面与备用提示词
-7. QA 报告与可导出物料
+```text
+小说/剧本
+  -> chapter_intake 原文保护与哈希
+  -> director_package 事件/资产/分镜/提示词
+  -> asset_render_plan 人物/场景/道具任务
+  -> storyboard_render_plan 分镜图任务
+  -> video_render_plan 分镜视频任务
+  -> audio_render_plan 对白/旁白任务
+  -> assembly_plan FFmpeg 合成计划
+  -> package_qa_export 物料 QA 与导出
+```
 
-它不会凭空替你调用 Seedance、即梦、可灵、Veo 或其他外部平台，也不会声称已经生成最终成片。平台和模型是否接入，以仓库中是否存在真实集成代码为准。
+工作流契约：
+
+```text
+workflows/novel_to_drama.v1.json
+```
+
+它是单入口工作流，但内部仍采用可替换阶段和任务依赖图。这样用户只需要启动一次，开发时又不用维护一张谁都不敢碰的巨型节点图。
+
+## 一次运行
+
+安装：
+
+```bash
+python -m pip install -e .
+```
+
+从小说或剧本生成完整生产计划：
+
+```bash
+short-drama-controller-v06 run-all \
+  --input examples/input_script.md \
+  --out demo_v06 \
+  --title 镖局收徒Demo
+```
+
+查看状态：
+
+```bash
+short-drama-controller-v06 workflow-status --project demo_v06
+```
+
+断点续跑：
+
+```bash
+short-drama-controller-v06 run-all \
+  --input examples/input_script.md \
+  --out demo_v06 \
+  --title 镖局收徒Demo \
+  --resume
+```
+
+`--resume` 会跳过已经完成的阶段。若输入原文发生变化，会拒绝续跑，避免原文证据链被悄悄替换。
+
+## 当前执行边界
+
+### 已完成
+
+- 小说/剧本输入与原文 SHA256。
+- 导演物料包。
+- 人物全身图、三视图、头像任务。
+- 场景和道具参考图任务。
+- 分镜图与分镜视频任务。
+- 对白和旁白 TTS 任务。
+- 失败重试、断点续跑和候选版本结构。
+- FFmpeg 合成命令计划。
+- 物料 QA 和提示词/表格导出。
+
+### 尚未自动执行
+
+- 未向 Comfy Cloud Manager 提交真实图像或视频任务。
+- 未自动启动 RunPod GPU。
+- 未下载任何模型。
+- 未调用 Liblib 或其他付费 API。
+- 未生成真实 TTS 音频。
+- 未执行 FFmpeg 成片。
+
+只有仓库中存在真实 Provider 代码并通过测试后，状态才允许从 `planned` 进入 `running/completed`。
+
+## 最终交付
+
+### 导演物料
+
+1. 可阅读的分集剧本。
+2. 人物、场景、道具资产锁定与完整生图提示词。
+3. 4-15 秒生成片段计划。
+4. 镜头执行表与故事板。
+5. 动作轨迹、机位、轴线、发力和受力设计。
+6. 首帧、图片、视频、尾帧、声音、负面与备用提示词。
+7. QA 报告与平台导出表格。
+
+### 生产编排
+
+1. `workflow.json`：总工作流状态、阶段、重试和原文哈希。
+2. `production_tasks.json`：资产、分镜、视频、音频和合成任务依赖图。
+3. `assembly_plan.json`：FFmpeg 拼接顺序和输出文件。
+4. 每项资产最多保留 10 个候选版本。
+5. 最终选片必须经过人工确认。
 
 ## 核心生产层级
 
@@ -37,84 +129,11 @@ episode 单集（通常2-3分钟）
       -> shot 镜头
 ```
 
-15 秒限制针对的是一次视频生成片段，不是完整一集。把这两个概念混在一起，后面的分镜、时长和剪辑都会一起变成一锅很有技术感的粥。
-
-## Codex App / Codex CLI 使用
-
-Codex 会从仓库根目录读取：
-
-```text
-AGENTS.md
-.agents/skills/ai-short-drama-controller/SKILL.md
-```
-
-打开本仓库后，显式调用：
-
-```text
-$ai-short-drama-controller
-```
-
-示例指令：
-
-```text
-$ai-short-drama-controller
-把我提供的小说改成3分钟一集的AI漫剧剧本。
-本次只做剧本改写，不生成资产和分镜。
-画幅16:9，写实古装武侠电影质感。
-```
-
-Skill 默认关闭隐式调用，因此必须明确选择或输入 `$ai-short-drama-controller`。这样普通讨论不会突然生成十几份生产文件。
-
-## 安装与自检
-
-需要 Python 3.10 或更高版本。
-
-```bash
-python -m pip install -e .
-short-drama-controller-v02 doctor
-```
-
-`doctor` 会检查：
-
-- Python 版本
-- CLI 主入口模块
-- 根目录 `AGENTS.md`
-- Codex Skill 的 YAML frontmatter
-- `agents/openai.yaml` 元数据
-
-## 主入口
-
-`short-drama-controller-v02` 指向：
-
-```text
-short_drama_controller.v02_full_cli:main
-```
-
-主流程命令：
-
-```bash
-short-drama-controller-v02 init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
-short-drama-controller-v02 qa --project demo_v02
-short-drama-controller-v02 repair --project demo_v02
-short-drama-controller-v02 repair --project demo_v02 --shot SH005
-short-drama-controller-v02 export --project demo_v02
-short-drama-controller-v02 grid --project demo_v02 --shot SH005
-```
-
-未安装时使用：
-
-```bash
-python -m short_drama_controller.v02_full_cli doctor
-python -m short_drama_controller.v02_full_cli init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
-python -m short_drama_controller.v02_full_cli qa --project demo_v02
-python -m short_drama_controller.v02_full_cli repair --project demo_v02
-python -m short_drama_controller.v02_full_cli export --project demo_v02
-python -m short_drama_controller.v02_full_cli grid --project demo_v02 --shot SH005
-```
+15 秒限制针对一次视频生成片段，不是完整一集。
 
 ## 主流程结构
 
-小说章节输入后，先生成并写入 `project.yaml`：
+小说章节输入后，写入 `project.yaml`：
 
 ```text
 chapter_intake 章节解析
@@ -134,7 +153,7 @@ coverage_qa 关键实体覆盖QA
 分镜必须基于：
 
 ```text
-story_events 事件链 -> beat_map 剧情节拍表 -> clip_plan 生成片段计划 -> shot_plan 分镜计划
+story_events -> beat_map -> clip_plan -> shot_plan
 ```
 
 每个 shot 必须绑定：
@@ -164,46 +183,58 @@ reset_position 复位站位
 fallback_shot 备用镜头
 ```
 
-## 分阶段执行
+## 任务图规则
 
-Codex Skill 遵守“只执行用户明确要求的阶段”：
+### 角色资产链
 
 ```text
-rewrite 剧本改写
-assets 资产提取
-clips 生成片段拆分
-storyboard 故事板
-prompts 生成提示词
-qa 质检返修
-export 导出
+角色全身图
+  -> 角色三视图
+  -> 角色头像/身份参考
 ```
 
-用户只要求视频提示词时，不会顺手附赠人物小传、行业分析、制作感悟和另外八份 Markdown。那些东西通常只是文档数量在努力假装生产力。
+后续分镜优先使用已选三视图，其次使用全身图和头像。这个结构来自 LumenX 的角色一致性方法，并已重写成当前仓库的中英文字段契约。
+
+### 分镜生成链
+
+```text
+角色/场景/道具资产
+  -> 分镜主图
+  -> 分镜视频
+  -> 人工选片
+```
+
+### 合成链
+
+```text
+全部已选分镜视频 + 对白/旁白音轨
+  -> FFmpeg concat
+  -> 音轨混合
+  -> 最终单集
+```
+
+若合成失败，必须输出 `BLOCKER`。禁止拿第一段视频冒充完整成片。
 
 ## QA Gate / 质检闸门
 
-`export` 前必须自动运行 QA。只要存在 `BLOCKER`，禁止导出。
+`export` 前自动运行物料 QA。存在 `BLOCKER` 时禁止导出。
 
-`qa.md` 必须记录：
+媒体执行阶段后续还会增加第二层 QA：
 
-```text
-qa_status 质检状态
-allow_export 允许导出
-blocker_count 阻塞问题数
-warning_count 警告问题数
-```
-
-返修规则：
-
-- 返修直接覆盖原目标文件或目标镜头
-- 禁止生成 `final_v2`、`fixed`、`最新版` 等重复文件
-- 单次定向返修只改变一个主要变量
-- 高风险镜头必须保留备用镜头
+- 图片身份一致性。
+- 场景空间连续性。
+- 首尾帧衔接。
+- 视频损坏和时长检查。
+- 对白、嘴型与字幕时间轴。
+- 最终视频完整性。
 
 ## 项目输出
 
 ```text
-demo_v02/
+demo_v06/
+├─ workflow.json
+├─ production_tasks.json
+├─ assembly_plan.json
 ├─ project.yaml
 ├─ script.md
 ├─ chapter_intake.md
@@ -238,40 +269,59 @@ demo_v02/
    └─ grid_strategy_table.csv
 ```
 
-视频提示词统一导出为：
+## 原有分阶段命令
 
-```text
-exports/video_prompts.md
+```bash
+short-drama-controller-v02 init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
+short-drama-controller-v02 qa --project demo_v02
+short-drama-controller-v02 repair --project demo_v02
+short-drama-controller-v02 repair --project demo_v02 --shot SH005
+short-drama-controller-v02 export --project demo_v02
+short-drama-controller-v02 grid --project demo_v02 --shot SH005
 ```
 
-## Codex Skill 目录
+这些命令继续保留，适合只做剧本、资产、分镜或定向返修。
+
+## Codex Skill
+
+Codex 会读取：
 
 ```text
-.agents/skills/ai-short-drama-controller/
-├─ SKILL.md
-├─ agents/
-│  └─ openai.yaml
-└─ references/
-   ├─ asset-contract.md
-   ├─ storyboard-contract.md
-   └─ action-contract.md
+AGENTS.md
+.agents/skills/ai-short-drama-controller/SKILL.md
 ```
 
-- `SKILL.md`：触发范围、生产阶段、工作流和输出控制
-- `asset-contract.md`：人物三视图、场景和道具资产标准
-- `storyboard-contract.md`：机位、轴线、人物运动轨迹和连续性标准
-- `action-contract.md`：武器、步法、攻击线、接触点、受力和备用方案
+显式调用：
+
+```text
+$ai-short-drama-controller
+```
+
+Skill 默认关闭隐式调用，避免普通讨论误触发整条生产流程。
 
 ## 测试
 
 ```bash
 pytest -q
 python scripts/v02_smoke.py
-short-drama-controller-v02 doctor
+short-drama-controller-v06 doctor
 ```
 
-测试不得依赖网络。Smoke test 默认使用临时目录；传入 `--out` 时写入指定目录，不删除仓库固定目录。
+测试不得依赖网络，不得调用模型，不得启动 GPU。
+
+## 来源与许可证
+
+- LumenX：MIT，可移植资产、分镜和版本结构。
+- LocalMiniDrama：MIT，可移植任务恢复、重试和 FFmpeg 合成思路。
+- ArcReel：AGPL-3.0，只研究架构，不复制源码。
+- Toonflow：存在补充商业条款，只研究产品流程，不复制核心源码。
+
+详细来源、Commit 和版权声明见：
+
+```text
+THIRD_PARTY_NOTICES.md
+```
 
 ## 版权安全
 
-参考影视作品时，只学习结构、节奏、镜头逻辑、角色功能和可复用的生产模式。不要复制原作的角色名称、完整对白、具体情节、身份设定或世界观。
+参考影视作品时，只学习结构、节奏、镜头逻辑、角色功能和可复用生产模式。不要复制原作角色名称、完整对白、具体情节、身份设定或世界观。
