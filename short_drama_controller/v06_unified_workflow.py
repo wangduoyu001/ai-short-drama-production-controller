@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .v02_exporters import export_project
-from .v02_full_cli import build_project, load_project, save_project
+from .v02_io import read_project
+from .v02_models import Project
 
 WORKFLOW_ID = "novel-to-drama.v1"
 STATE_FILENAME = "workflow.json"
@@ -23,7 +24,7 @@ STAGE_ORDER = (
     "video_render_plan",
     "audio_render_plan",
     "assembly_plan",
-    "qa_export",
+    "package_qa_export",
 )
 
 STAGE_DEPENDENCIES: dict[str, tuple[str, ...]] = {
@@ -34,7 +35,7 @@ STAGE_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "video_render_plan": ("storyboard_render_plan",),
     "audio_render_plan": ("director_package",),
     "assembly_plan": ("video_render_plan", "audio_render_plan"),
-    "qa_export": ("assembly_plan",),
+    "package_qa_export": ("assembly_plan",),
 }
 
 
@@ -99,6 +100,10 @@ def new_workflow_state(source_text: str, source_path: Path, title: str) -> dict[
             "audio_provider 声音提供方": "not_configured 未配置",
             "assembly 合成": "ffmpeg 本地合成",
         },
+        "source_provenance 来源借鉴": [
+            "alibaba/lumenx@7a1213a0db73ab90ca976f5c4b4ca680e1ae1d2d MIT",
+            "xuanyustudio/LocalMiniDrama@b695284b8288e392a4ce2a63717406f3830966af MIT",
+        ],
     }
 
 
@@ -110,6 +115,10 @@ def load_workflow_state(project_dir: Path) -> dict[str, Any]:
     if not isinstance(payload, dict) or payload.get("workflow_id 工作流编号") != WORKFLOW_ID:
         raise ValueError("workflow state is invalid")
     return payload
+
+
+def _load_project(project_dir: Path) -> Project:
+    return Project(read_project(project_dir / "project.yaml"))
 
 
 def _stage_ready(state: dict[str, Any], stage_id: str) -> bool:
@@ -192,7 +201,21 @@ def _task(
     }
 
 
-def _character_asset_tasks(project: Any) -> list[dict[str, Any]]:
+def _character_prompt(character: dict[str, Any]) -> str:
+    ordered_fields = (
+        "character_name 角色名",
+        "role_function 角色功能",
+        "face_shape 脸型",
+        "hair_style 发型",
+        "clothing_lock 服装锁定",
+        "prop_lock 道具锁定",
+        "forbidden_changes 禁止变化",
+    )
+    parts = [str(character.get(field, "")).strip() for field in ordered_fields]
+    return "，".join(part for part in parts if part)
+
+
+def _character_asset_tasks(project: Project) -> list[dict[str, Any]]:
     tasks: list[dict[str, Any]] = []
     for character in project.characters:
         character_id = character.get("character_id 角色编号", "UNKNOWN")
@@ -203,7 +226,7 @@ def _character_asset_tasks(project: Any) -> list[dict[str, Any]]:
             provider="comfy-cloud-manager",
             inputs={
                 "character_id 角色编号": character_id,
-                "prompt 提示词": character.get("asset_prompt 资产提示词") or character.get("visual_prompt 视觉提示词") or character,
+                "prompt 提示词": _character_prompt(character),
                 "background 背景": "pure_white 纯白背景",
             },
             outputs={"asset_role 资产用途": "full_body 全身图"},
@@ -227,7 +250,7 @@ def _character_asset_tasks(project: Any) -> list[dict[str, Any]]:
     return tasks
 
 
-def _scene_prop_tasks(project: Any) -> list[dict[str, Any]]:
+def _scene_prop_tasks(project: Project) -> list[dict[str, Any]]:
     tasks: list[dict[str, Any]] = []
     for scene in project.scenes:
         scene_id = scene.get("scene_id 场景编号", "UNKNOWN")
@@ -271,7 +294,7 @@ def _shot_dependencies(shot: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(dependencies))
 
 
-def build_production_tasks(project: Any) -> dict[str, Any]:
+def build_production_tasks(project: Project) -> dict[str, Any]:
     tasks = _character_asset_tasks(project) + _scene_prop_tasks(project)
     for shot in project.shots:
         shot_id = shot.get("shot_id 镜头编号", "UNKNOWN")
@@ -392,14 +415,7 @@ def run_unified_workflow(
         state = new_workflow_state(source_text, input_path, project_title)
         _write_json(state_path, state)
 
-    _run_stage(
-        state,
-        state_path,
-        "chapter_intake",
-        lambda: [str(input_path)],
-        resume=resume,
-    )
-
+    _run_stage(state, state_path, "chapter_intake", lambda: [str(input_path)], resume=resume)
     _run_stage(
         state,
         state_path,
@@ -408,9 +424,8 @@ def run_unified_workflow(
         resume=resume,
     )
 
-    project = load_project(project_dir)
+    project = _load_project(project_dir)
     task_manifest = build_production_tasks(project)
-
     _run_stage(
         state,
         state_path,
@@ -451,8 +466,8 @@ def run_unified_workflow(
     _run_stage(
         state,
         state_path,
-        "qa_export",
-        lambda: _run_qa_export(project_dir),
+        "package_qa_export",
+        lambda: _run_package_qa_export(project_dir),
         resume=resume,
     )
 
@@ -473,6 +488,8 @@ def run_unified_workflow(
 
 
 def _build_and_save_director_package(source_text: str, title: str, project_dir: Path) -> list[str]:
+    from .v02_full_cli import build_project, save_project
+
     save_project(build_project(source_text, title), project_dir)
     return [
         "project.yaml",
@@ -495,6 +512,6 @@ def _save_assembly_plan(project_dir: Path, assembly_plan: dict[str, Any]) -> lis
     return [ASSEMBLY_FILENAME]
 
 
-def _run_qa_export(project_dir: Path) -> list[str]:
-    export_project(load_project(project_dir), project_dir)
+def _run_package_qa_export(project_dir: Path) -> list[str]:
+    export_project(_load_project(project_dir), project_dir)
     return ["qa.md", "exports/"]
