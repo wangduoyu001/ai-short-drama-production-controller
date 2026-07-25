@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from importlib.util import find_spec
 from pathlib import Path
@@ -26,6 +27,7 @@ from .v02_shot_inference import attach_shot_inference
 from .v02_source_segments import attach_source_coverage, build_source_segments
 from .v02_storyboard import build_shots
 from .v02_cli import render_assets, render_producer, render_prompts, render_script, render_sound, render_storyboard
+from .v06_unified_workflow import load_workflow_state, run_unified_workflow
 
 CODEX_SKILL_PATH = Path(".agents/skills/ai-short-drama-controller/SKILL.md")
 
@@ -84,6 +86,28 @@ def cmd_init(args: argparse.Namespace) -> None:
     text = Path(args.input).read_text(encoding="utf-8").strip()
     save_project(build_project(text, args.title), Path(args.out))
     print(f"v02_project 已创建: {args.out}")
+
+
+def cmd_run_all(args: argparse.Namespace) -> None:
+    result = run_unified_workflow(
+        Path(args.input),
+        Path(args.out),
+        title=args.title,
+        resume=args.resume,
+    )
+    print(json.dumps({
+        "workflow_id 工作流编号": result.workflow_id,
+        "status 状态": result.status,
+        "project_dir 项目目录": str(result.project_dir),
+        "state_path 状态文件": str(result.state_path),
+        "task_count 任务总数": result.task_count,
+        "pending_external_tasks 待外部执行任务": result.pending_external_tasks,
+        "execution_note 执行说明": "只完成自有编排与任务规划，未调用模型、未启动GPU、未产生费用。",
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_workflow_status(args: argparse.Namespace) -> None:
+    print(json.dumps(load_workflow_state(Path(args.project)), ensure_ascii=False, indent=2))
 
 
 def cmd_qa(args: argparse.Namespace) -> None:
@@ -227,6 +251,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True)
     p.add_argument("--title")
     p.set_defaults(func=cmd_init)
+    p = sub.add_parser("run-all")
+    p.add_argument("--input", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--title")
+    p.add_argument("--resume", action="store_true", help="skip completed stages and continue from workflow.json")
+    p.set_defaults(func=cmd_run_all)
+    p = sub.add_parser("workflow-status")
+    p.add_argument("--project", required=True)
+    p.set_defaults(func=cmd_workflow_status)
     p = sub.add_parser("grid")
     p.add_argument("--project", required=True)
     p.add_argument("--shot", required=True)
