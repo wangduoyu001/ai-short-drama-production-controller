@@ -30,6 +30,9 @@ This repository produces a director-ready material package and an owned, resumab
 17. Completed external tasks may be skipped; failed tasks may retry up to their declared maximum. Never silently replace a failed final assembly with the first clip.
 18. Directly copied or substantially adapted permissive source must preserve attribution and license notices in `THIRD_PARTY_NOTICES.md`.
 19. Do not copy AGPL, source-available, closed-source, or commercially restricted core code into this repository without an explicit compatible licensing decision.
+20. Comfy Cloud Manager sync may only target loopback HTTP hosts and only the production-plan import endpoint.
+21. Manager sync must not send API keys, tokens, execution flags, remote URLs, provider task IDs, generated media, or the original source novel.
+22. Save `manager_import.json` only after the manager proves `dry_run_only=true` and all execution flags are false.
 
 ## Output priorities / 输出优先级
 
@@ -42,8 +45,9 @@ The human-readable production package should make these items easy to find:
 5. `workflow.json` - top-level stage state, source hash, attempts, blockers, and evidence.
 6. `production_tasks.json` - render/audio/assembly task dependency graph and variant selection state.
 7. `assembly_plan.json` - deterministic final assembly contract.
-8. `qa.md` - blockers, warnings, repair actions, and export permission.
-9. `exports/` - platform-ready prompts and tables.
+8. `manager_import.json` - optional local manager dry-run import receipt.
+9. `qa.md` - blockers, warnings, repair actions, and export permission.
+10. `exports/` - platform-ready prompts and tables.
 
 ## Code changes / 代码修改
 
@@ -51,6 +55,7 @@ The human-readable production package should make these items easy to find:
 - Do not add a runtime dependency unless the behavior cannot be implemented with the standard library.
 - New task or workflow states must be deterministic JSON and safe for resume.
 - Workflow contracts and Python stage definitions must stay synchronized.
+- Network tests must use injected fake senders; tests must not contact a real local or remote service.
 - After changing Python or workflow contracts, run:
 
 ```bash
