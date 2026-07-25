@@ -7,6 +7,7 @@ from pathlib import Path
 from short_drama_controller.v02_models import Project
 from short_drama_controller.v06_unified_workflow import (
     ASSEMBLY_FILENAME,
+    STAGE_DEPENDENCIES,
     STAGE_ORDER,
     TASKS_FILENAME,
     WORKFLOW_ID,
@@ -60,6 +61,21 @@ def sample_project() -> Project:
             }
         ],
     })
+
+
+def test_editable_contract_matches_python_stage_graph():
+    contract_path = Path(__file__).resolve().parents[1] / "workflows" / "novel_to_drama.v1.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    stages = contract["stages"]
+
+    assert contract["workflow_id"] == WORKFLOW_ID
+    assert [stage["id"] for stage in stages] == list(STAGE_ORDER)
+    assert {
+        stage["id"]: tuple(stage["depends_on"])
+        for stage in stages
+    } == STAGE_DEPENDENCIES
+    assert contract["execution_policy"]["paid_actions_default"] is False
+    assert contract["execution_policy"]["external_generation_default"] is False
 
 
 def test_task_graph_contains_assets_shots_audio_and_assembly():
