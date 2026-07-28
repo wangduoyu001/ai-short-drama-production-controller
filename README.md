@@ -1,32 +1,24 @@
-# AI Short Drama Production Controller / AI短剧生产控制器
+# AI短剧导演系统
 
-版本：`0.6.0`
+版本：`0.7.0`
 
-自有 AI 短剧导演控制器、Codex Skill 和单入口生产编排器。它把小说、剧本、口述创意或半成品提示词整理成导演物料，并生成资产、分镜、视频、配音与合成任务图。
+这是唯一维护的 AI 短剧导演生产仓库。系统把小说、剧本、口述创意或半成品提示词整理成导演物料，并生成可恢复的资产、分镜、视频、声音和合成任务图。
 
-`run-all` 可以只在本地生成计划，也可以把 `production_tasks.json` 导入本机 Comfy Cloud Manager。导入不等于执行，不会调用 ComfyUI `/prompt`、启动 GPU 或产生推理费用。
-
-## 总工作流
+## 单一工作流
 
 ```text
-小说/剧本
-  -> 原文保护与 SHA256
-  -> 事件链、剧本、世界观与风格
+原始内容
+  -> 剧情与章节事件图谱
+  -> 剧本与节拍
   -> 人物/场景/道具资产锁定
-  -> 节拍、片段与分镜
-  -> 图片/视频/TTS 任务依赖图
-  -> FFmpeg 合成计划
+  -> 镜头与分镜
+  -> 图片/视频/声音任务图
+  -> 人工审核与返修
+  -> 合成计划
   -> QA 与导出
-  -> 可选：导入本机 Comfy Cloud Manager
 ```
 
-工作流契约：
-
-```text
-workflows/novel_to_drama.v1.json
-```
-
-用户只有一个入口，内部仍保持可替换、可续跑的阶段。否则把所有逻辑塞进一张巨型 ComfyUI 图，最终会得到一件看起来复杂、实际上没人敢维护的数字挂毯。
+工作流契约：`workflows/novel_to_drama.v1.json`
 
 ## 安装
 
@@ -36,204 +28,97 @@ workflows/novel_to_drama.v1.json
 python -m pip install -e .
 ```
 
-## 本地生成完整计划
+## 使用
+
+生成完整生产计划：
 
 ```bash
-short-drama-controller-v06 run-all \
+short-drama-controller run \
   --input examples/input_script.md \
-  --out demo_v06 \
+  --out demo \
   --title 镖局收徒Demo
 ```
-
-## 一个命令生成并导入本机管理器
-
-先启动 Comfy Cloud Manager，然后执行：
-
-```bash
-short-drama-controller-v06 run-all \
-  --input examples/input_script.md \
-  --out demo_v06 \
-  --title 镖局收徒Demo \
-  --manager-url http://127.0.0.1:8000
-```
-
-绑定管理器中已经存在的项目：
-
-```bash
-short-drama-controller-v06 run-all \
-  --input examples/input_script.md \
-  --out demo_v06 \
-  --title 镖局收徒Demo \
-  --manager-url http://127.0.0.1:8000 \
-  --manager-project-id prj_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-导入成功后会写入：
-
-```text
-manager_import.json
-```
-
-该回执包含管理器计划编号、来源 SHA256、映射状态和 dry-run 安全证明。
-
-## 导入已有计划
-
-```bash
-short-drama-controller-v06 sync-plan \
-  --project demo_v06 \
-  --manager-url http://127.0.0.1:8000
-```
-
-安全限制：
-
-- 只允许 `http://127.0.0.1`、`http://localhost` 或 `http://[::1]`。
-- 禁止公网域名、HTTPS代理地址、URL凭据、路径、查询参数和片段。
-- 只调用 `/api/v1/production-plans/import`。
-- 管理器必须返回 `dry_run_only=true`，否则拒绝保存回执。
-- 请求体没有 `execute`、`submit`、API Key 或 Token。
-
-## 状态与续跑
 
 查看状态：
 
 ```bash
-short-drama-controller-v06 workflow-status --project demo_v06
+short-drama-controller status --project demo
 ```
 
 断点续跑：
 
 ```bash
-short-drama-controller-v06 run-all \
+short-drama-controller run \
   --input examples/input_script.md \
-  --out demo_v06 \
+  --out demo \
   --resume
 ```
 
-`--resume` 会跳过已完成阶段。输入原文发生变化时会拒绝续跑，防止证据链被悄悄替换。
+生成节点化导演工作流模板：
 
-## 输出
-
-```text
-demo_v06/
-├─ workflow.json
-├─ production_tasks.json
-├─ assembly_plan.json
-├─ manager_import.json        # 仅成功导入管理器后存在
-├─ project.yaml
-├─ script.md
-├─ chapter_intake.md
-├─ story_events.md
-├─ world_bible.md
-├─ style_bible.md
-├─ characters.md
-├─ three_views.md
-├─ scene_plan.md
-├─ coverage_qa.md
-├─ assets.md
-├─ storyboard.md
-├─ producer.md
-├─ sound.md
-├─ prompts.md
-├─ qa.md
-└─ exports/
-   ├─ first_frame_prompts.md
-   ├─ image_prompts.md
-   ├─ video_prompts.md
-   ├─ end_frame_prompts.md
-   ├─ negative_prompts.md
-   ├─ fallback_shots.md
-   ├─ grid_prompts.md
-   ├─ batch_inference.md
-   ├─ shot_table.csv
-   ├─ sound_table.csv
-   ├─ producer_table.csv
-   ├─ action_table.csv
-   ├─ shot_inference_table.csv
-   ├─ batch_inference_table.csv
-   └─ grid_strategy_table.csv
+```bash
+short-drama-controller graph-template --out director_graph.json
 ```
 
-## 任务图规则
+导入本机生产管理器：
 
-### 角色资产
-
-```text
-角色全身图
-  -> 角色三视图
-  -> 角色头像/身份参考
+```bash
+short-drama-controller sync \
+  --project demo \
+  --manager-url http://127.0.0.1:8000
 ```
 
-### 分镜与视频
+本地检查：
 
-```text
-角色/场景/道具资产
-  -> 分镜主图
-  -> 分镜视频
-  -> 人工选片
+```bash
+short-drama-controller doctor
+pytest -q
 ```
 
-### 音频与合成
+## 核心结构
 
 ```text
-全部已选分镜视频 + 对白/旁白音轨
-  -> FFmpeg concat
-  -> 音轨混合
-  -> 最终单集
+short_drama_controller/
+├─ director_system/
+│  ├─ agents.py       # 导演、编剧、资产、分镜、制作、审核角色
+│  ├─ graph.py        # 节点依赖、状态、重试和阻塞
+│  ├─ providers.py    # 文本、图片、视频、TTS、工作流、合成接口
+│  └─ story.py        # 章节事件图谱和上下文召回
+├─ cli.py             # 唯一命令入口
+├─ v06_unified_workflow.py
+└─ v06_manager_sync.py
 ```
 
-合成失败必须输出 `BLOCKER`，禁止拿第一段视频冒充完整成片。
+旧实现文件目前仅作为内部兼容层，不再提供独立命令或独立版本。后续修改统一从 `short-drama-controller` 入口进入。
+
+## 当前已完成
+
+- 原始内容 SHA256 与断点状态。
+- 剧本、事件链、世界观和风格物料。
+- 人物、场景、道具和分镜任务图。
+- 图片、视频、TTS 和合成依赖关系。
+- 候选版本、人工选片、失败重试和阻塞状态。
+- 节点化导演工作流契约。
+- 分层 Agent 定义。
+- Provider 注册和能力路由。
+- 章节事件图谱、依赖校验和局部上下文提取。
+- 本机生产管理器 dry-run 导入。
 
 ## 当前执行边界
 
-已经完成：
+尚未默认自动执行：
 
-- 小说/剧本输入与原文 SHA256。
-- 导演物料包。
-- 人物、场景、道具、分镜图、分镜视频和 TTS 任务图。
-- 重试、断点续跑、候选版本和人工选片结构。
-- FFmpeg 合成计划。
-- Comfy Cloud Manager 本机 dry-run 导入。
+- 真实图片和视频推理。
+- GPU 启动与模型下载。
+- 付费模型接口调用。
+- 真实 TTS。
+- FFmpeg 最终成片执行。
 
-尚未自动执行：
+只有真实 Provider、媒体输出、人工审核和 QA 全部通过后，状态才允许进入 `completed`。
 
-- 未创建真实生产批次。
-- 未向 ComfyUI 提交 `/prompt`。
-- 未启动 RunPod GPU。
-- 未下载模型。
-- 未调用 Liblib 或其他付费 API。
-- 未生成真实 TTS。
-- 未执行 FFmpeg 成片。
+## 文档
 
-只有真实 Provider、工作流生产验证、媒体输出和 QA 全部通过后，状态才允许进入 `completed`。
-
-## 原有 v02 命令
-
-```bash
-short-drama-controller-v02 init --input examples/input_script.md --out demo_v02 --title 镖局收徒Demo
-short-drama-controller-v02 qa --project demo_v02
-short-drama-controller-v02 repair --project demo_v02
-short-drama-controller-v02 export --project demo_v02
-```
-
-这些命令继续保留，适合只做某个生产阶段。
-
-## 测试
-
-```bash
-pytest -q
-python scripts/v02_smoke.py
-short-drama-controller-v06 doctor
-```
-
-测试不得依赖公网，不得调用模型，不得启动 GPU。
-
-## 来源与许可证
-
-- LumenX：MIT，移植资产、分镜和版本结构。
-- LocalMiniDrama：MIT，移植任务恢复、重试和 FFmpeg 合成思路。
-- ArcReel：AGPL-3.0，只研究架构，不复制源码。
-- Toonflow：存在补充商业条款，只研究产品流程，不复制核心源码。
-
-详细来源和版权声明见 `THIRD_PARTY_NOTICES.md`。
-
-参考影视作品时，只学习结构、节奏、镜头逻辑和角色功能，不复制原作角色名称、完整对白、具体情节或世界观。
+- `docs/ARCHITECTURE.md`
+- `docs/CODE_MAP.md`
+- `docs/DEVELOPMENT.md`
+- `THIRD_PARTY_NOTICES.md`

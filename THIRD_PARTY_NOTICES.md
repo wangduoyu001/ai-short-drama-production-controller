@@ -1,6 +1,6 @@
 # Third-Party Notices / 第三方来源声明
 
-本仓库的 `novel-to-drama.v1` 总工作流在独立重写的基础上，移植和改造了以下 MIT 项目的部分数据结构、任务编排思想与合成策略。未复制 ArcReel 的 AGPL 源码，也未复制 Toonflow 受补充商业条款约束的核心源码。
+本仓库在独立实现的基础上，移植和改造了以下 MIT 项目的部分数据结构、任务状态设计与合成策略。所有直接移植或实质改造内容继续遵守对应许可证。
 
 ## Alibaba LumenX
 
@@ -9,11 +9,10 @@
 - License: MIT
 - Copyright: `Copyright (c) 2026 Alibaba`
 - Adapted concepts:
-  - `pending / processing / completed / failed` generation lifecycle
+  - generation lifecycle states
   - image and video variant history with selected take
-  - character full-body → three-view/headshot reference chain
-  - storyboard frames bound to character and scene references
-  - storyboard image → shot video → final assembly production order
+  - character reference asset chain
+  - storyboard image to shot video production order
 
 ## LocalMiniDrama
 
@@ -22,11 +21,11 @@
 - License: MIT
 - Copyright: `Copyright (c) 2026 xuanyustudio`
 - Adapted concepts:
-  - one-click pipeline represented as resumable tasks
+  - resumable pipeline tasks
   - skip-completed and retry-failed policy
-  - task dependency graph for images, videos, audio and assembly
+  - task dependency graph for media and assembly
   - deterministic FFmpeg concat command planning
-  - hard failure instead of silently pretending the first clip is a completed episode
+  - hard failure instead of false completion
 
 ## MIT License Notice
 
@@ -35,9 +34,3 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notices and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-## Explicitly Not Copied / 明确未复制
-
-- `ArcReel/ArcReel`: AGPL-3.0. Only high-level orchestration ideas were studied.
-- `HBAI-Ltd/Toonflow-app`: Apache-2.0 plus supplementary commercial terms. Only product flow and chapter-event concepts were studied.
-- TypeTale and other closed or binary-distributed products: no source code copied.

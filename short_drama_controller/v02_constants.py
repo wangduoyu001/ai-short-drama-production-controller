@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-PACKAGE_VERSION = "0.6.0"
-SKILL_VERSION = "0.6.0"
-DOCUMENT_VERSION = "0.6.0"
-MAIN_COMMAND = "short-drama-controller-v06"
-MAIN_ENTRYPOINT = "short_drama_controller.v02_full_cli:main"
+from .version import DOCUMENT_VERSION, MAIN_COMMAND, PACKAGE_VERSION, SKILL_VERSION
+
+MAIN_ENTRYPOINT = "short_drama_controller.cli:main"
 VIDEO_PROMPTS_FILENAME = "video_prompts.md"
