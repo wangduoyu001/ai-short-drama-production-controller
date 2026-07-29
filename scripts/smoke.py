@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import tempfile
 from pathlib import Path
 
@@ -15,7 +16,14 @@ def run_smoke(out_dir: Path) -> None:
         title="director-system-smoke",
         resume=False,
     )
-    required = ("workflow.json", "production_tasks.json", "assembly_plan.json", "project.yaml", "qa.md")
+    required = (
+        "workflow.json",
+        "production_tasks.json",
+        "assembly_plan.json",
+        "project.yaml",
+        "qa.md",
+        "exports/video_prompts.md",
+    )
     missing = [name for name in required if not (out_dir / name).is_file()]
     if missing:
         raise SystemExit(f"missing output files: {missing}")
@@ -28,6 +36,12 @@ def run_smoke(out_dir: Path) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", help="optional output directory")
+    args = parser.parse_args()
+    if args.out:
+        run_smoke(Path(args.out))
+        return
     with tempfile.TemporaryDirectory(prefix="director_smoke_") as temporary:
         run_smoke(Path(temporary))
 
